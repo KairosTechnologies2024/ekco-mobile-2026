@@ -1,17 +1,62 @@
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useDisable2FAMutation, useEnable2FAMutation, useGetUserByIdQuery } from '../../store/api/authApi';
+
+import { RootState } from '@reduxjs/toolkit/query';
+import { useSelector } from 'react-redux';
+
 
 export default function Settings() {
   const router = useRouter();
   const colorScheme = useColorScheme();
+  const user = useSelector((state: RootState) => state.user.user);
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(colorScheme === 'dark');
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [carFlagEnabled, setCarFlagEnabled] = useState(false);
+
+  const { data: userData, isLoading: userLoading, refetch } = useGetUserByIdQuery(user?.id || "");
+  const [enable2FA, { isLoading: enableLoading }] = useEnable2FAMutation();
+  const [disable2FA, { isLoading: disableLoading }] = useDisable2FAMutation();
+
+  useEffect(() => {
+    if (userData) {
+      setTwoFactorEnabled(userData.twofa_enabled);
+    }
+  }, [userData]);
+
+  const handleTwoFactorToggle = async () => {
+    if (!user?.id) {
+      Alert.alert('Error', 'User not logged in.');
+      return;
+    }
+    const newState = !twoFactorEnabled;
+
+    try {
+      if (newState) {
+        await enable2FA(user.id).unwrap();
+      } else {
+        await disable2FA(user.id).unwrap();
+      }
+      // Refetch user data to sync state with backend
+      await refetch();
+      Alert.alert(
+        'Two-Factor Authentication',
+        `Two-factor authentication ${newState ? 'enabled' : 'disabled'}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        `Failed to ${newState ? 'enable' : 'disable'} two-factor authentication. Please try again.`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
 
   const handleThemeToggle = () => {
     // For now, this is dummy functionality - just toggles local state
@@ -37,16 +82,7 @@ export default function Settings() {
     );
   };
 
-  const handleTwoFactorToggle = () => {
-    const newState = !twoFactorEnabled;
-    setTwoFactorEnabled(newState);
 
-    Alert.alert(
-      'Two-Factor Authentication',
-      `Two-factor authentication ${newState ? 'enabled' : 'disabled'}`,
-      [{ text: 'OK' }]
-    );
-  };
 
   const handleCarFlagToggle = () => {
     const newState = !carFlagEnabled;
@@ -66,6 +102,8 @@ export default function Settings() {
       [{ text: 'OK' }]
     );
   };
+
+
 
   return (
     <SafeAreaView className="flex-1 px-4 bg-white dark:bg-gray-900">
@@ -146,6 +184,7 @@ export default function Settings() {
           <Switch
             value={twoFactorEnabled}
             onValueChange={handleTwoFactorToggle}
+            disabled={enableLoading || disableLoading || userLoading}
             trackColor={{ false: '#767577', true: '#0a7ea4' }}
             thumbColor={twoFactorEnabled ? '#fff' : '#f4f3f4'}
           />

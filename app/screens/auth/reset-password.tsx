@@ -58,6 +58,17 @@ export default function ResetPasswordScreen() {
                         <Text className="text-gray-400 underline">Back to Login</Text>
                     </TouchableOpacity>
                 </View>
+
+                {/* Footer */}
+                <View className="mt-8 space-y-1 items-center">
+                    <Text className="text-gray-300">developed by</Text>
+                    <Image
+                        source={require('../../../assets/images/kairos tech logo white 2.png')}
+                        className="w-28 h-28 mb-6 self-center"
+                        resizeMode="contain"
+                    />
+                    <Text className="text-gray-300">version 1.13.3</Text>
+                </View>
             </View>
         </View>
     );
