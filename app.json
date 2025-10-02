@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "ekcotrackingmobile",
+    "scheme": "expo",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -40,7 +40,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
+      "router": {
+        "linking": {
+          "prefixes": ["expo://"]
+        }
+      },
       "eas": {
         "projectId": "9dbd91a9-2560-44d8-b4f4-ed6044c6a4d9"
       }

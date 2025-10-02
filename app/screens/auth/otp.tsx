@@ -27,7 +27,7 @@ export default function OtpScreen() {
         try {
             const response = await verify2FA({ token: otp, userId }).unwrap();
             console.log('OTP Verification Response:', response);
-            dispatch(setUser({ user: response.user, token: response.token }));
+            dispatch(setUser({ user: response.user, token: response.accessToken, refreshToken: response.refreshToken, userId: response.userId }));
             setModalVisible(true);
             setTimeout(() => {
                 setModalVisible(false);
@@ -82,6 +82,12 @@ export default function OtpScreen() {
                         </TouchableOpacity>
                     </View>
 
+                {/* Back to Login */}
+                <View className="mt-8 items-center">
+                    <TouchableOpacity onPress={() => router.back()}>
+                        <Text className="text-gray-400 underline">Back to Login</Text>
+                    </TouchableOpacity>
+                </View>
                     {/* Footer */}
                     <View className="mt-8 space-y-1 items-center">
                         <Text className="text-gray-300">developed by</Text>

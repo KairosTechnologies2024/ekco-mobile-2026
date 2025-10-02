@@ -38,7 +38,27 @@ export const authApi = createApi({
         body: credentials,
       }),
     }),
+    forgotPassword: builder.mutation({
+      query: (email) => {
+        console.log('Forgot password API call with email:', email);
+        return {
+          url: '/users/forgot-password',
+          method: 'POST',
+          body: { email },
+        };
+      },
+    }),
+    resetPassword: builder.mutation({
+      query: ({ newPassword, token }) => {
+        console.log('Reset password API call with token and newPassword');
+        return {
+          url: '/users/reset-password',
+          method: 'POST',
+          body: { newPassword, token },
+        };
+      },
+    }),
   }),
 });
 
-export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation } = authApi;
+export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation } = authApi;

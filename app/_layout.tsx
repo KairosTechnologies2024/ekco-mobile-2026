@@ -1,5 +1,6 @@
 import { store } from "@/store/store";
 import { Ionicons } from "@expo/vector-icons";
+import * as Linking from 'expo-linking';
 import { Stack, useRouter, useSegments } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Alert, StyleSheet, TouchableOpacity } from "react-native";
@@ -31,21 +32,47 @@ export default function Layout() {
   const isAuthScreen = segments.some(seg => seg === 'auth');
 
   const handleLogout = () => {
-
-
-  Alert.alert(
-                  'Logout',
-                  'Are you sure you want to logout?',
-                  [
-                    { text: 'No', style: 'cancel' },
-                    { text: 'Yes', onPress: () => router.replace('/screens/auth/auth') },
-                  ]
-                );
-
-
-
-  
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes', onPress: () => router.replace('/screens/auth/auth') },
+      ]
+    );
   };
+
+  // ✅ Robust deep link handling
+  useEffect(() => {
+    let handled = false;
+
+    const handleDeepLink = (url: string) => {
+      if (handled) return;
+      console.log('Handling deep link:', url);
+      const parsed = Linking.parse(url);
+      const path = parsed.path?.replace(/^\/+/, ''); // Remove leading slashes
+
+      if (path === 'reset-password' && parsed.queryParams?.token) {
+        handled = true;
+        console.log('Navigating to reset-password screen with token:', parsed.queryParams.token);
+        router.push(`/screens/auth/new-password?token=${parsed.queryParams.token}`);
+      } else {
+        console.log('Unhandled path or missing token in deep link');
+      }
+    };
+
+    // Handle cold start
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink(url);
+    });
+
+    // Handle app already open
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleDeepLink(url);
+    });
+
+    return () => subscription.remove();
+  }, [router]);
 
   return (
     <Provider store={store}>
@@ -59,9 +86,7 @@ export default function Layout() {
               backgroundColor: "#182f51",
             },
           }}
-        >
-
-        </Stack>
+        />
         {!isAuthScreen && (
           <>
             <Animated.View style={[styles.gearButton, animatedStyle]}>
@@ -72,12 +97,6 @@ export default function Layout() {
                 <Ionicons name="settings" size={18} color="#fff" />
               </TouchableOpacity>
             </Animated.View>
-          {/*   <TouchableOpacity
-              onPress={handleLogout}
-              style={styles.logoutButton}
-            >
-              <Ionicons name="log-out-outline" size={18} color="#fff" />
-            </TouchableOpacity> */}
           </>
         )}
         <Sidebar isVisible={sidebarVisible} onClose={() => setSidebarVisible(false)} />
@@ -90,18 +109,6 @@ const styles = StyleSheet.create({
   gearButton: {
     position: 'absolute',
     bottom: 90,
-    right: 20,
-    backgroundColor: '#182f51',
-    borderRadius: 25,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 0,
-  },
-  logoutButton: {
-    position: 'absolute',
-    bottom: 140,
     right: 20,
     backgroundColor: '#182f51',
     borderRadius: 25,

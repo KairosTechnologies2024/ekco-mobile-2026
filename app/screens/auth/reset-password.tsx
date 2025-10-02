@@ -1,17 +1,36 @@
+import { useForgotPasswordMutation } from '@/store/api/authApi';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Image,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 
 export default function ResetPasswordScreen() {
-    const loading = false;
     const router = useRouter();
+    const [email, setEmail] = useState('');
+    const [forgotPassword, { isLoading }] = useForgotPasswordMutation();
+
+    const handleResetPassword = async () => {
+        if (!email) {
+            Alert.alert('Validation Error', 'Please enter your email address.');
+            return;
+        }
+        try {
+            const response = await forgotPassword(email).unwrap();
+            console.log('Forgot password success response:', response);
+            Alert.alert('Success', 'Reset password link sent to your email.');
+            router.back();
+        } catch (error) {
+            console.log('Forgot password error response:', error);
+            Alert.alert('Error', 'Failed to send reset password link. Please try again.');
+        }
+    };
 
     return (
         <View className="flex-1 bg-primary-background-color px-6 justify-center">
@@ -36,15 +55,20 @@ export default function ResetPasswordScreen() {
                     <TextInput
                         placeholder="Email"
                         placeholderTextColor="#999"
-                        className="border border-white text-white p-3 rounded bg-secondary-background-color w-full mb-4"
+                        className="border border-white text-black p-3 rounded bg-secondary-background-color w-full mb-4"
+                        value={email}
+                        onChangeText={setEmail}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
                     />
 
                     <TouchableOpacity
                         className="bg-accent-color p-3 rounded items-center"
                         activeOpacity={0.8}
-                        onPress={() => { /* Handle reset */ }}
+                        onPress={handleResetPassword}
+                        disabled={isLoading}
                     >
-                        {loading ? (
+                        {isLoading ? (
                             <ActivityIndicator size="small" color="#fff" />
                         ) : (
                             <Text className="text-white font-bold text-lg">Send Reset Link</Text>
