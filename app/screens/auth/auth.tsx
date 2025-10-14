@@ -1,5 +1,5 @@
-import { useGetCustomerByUserIdQuery, useLoginMutation } from '@/store/api/authApi';
-import { setCustomer, setUser } from '@/store/slices/userSlice';
+import { useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useLoginMutation } from '@/store/api/authApi';
+import { setCustomer, setUser, setVehicles } from '@/store/slices/userSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -15,8 +15,8 @@ import {
 import { useDispatch } from 'react-redux';
 
 export default function AuthScreen() {
-    const [email, setEmail] = useState('nhlamulo@kairostechnology.co.za');
-    const [password, setPassword] = useState('qwerty');
+    const [email, setEmail] = useState('roadsidecoders@gmail.com');
+    const [password, setPassword] = useState('password');
     const [errors, setErrors] = useState({ email: '', password: '' });
     const [modalVisible, setModalVisible] = useState(false);
     const router = useRouter();
@@ -26,6 +26,9 @@ export default function AuthScreen() {
     const { data: customerData, refetch: refetchCustomer } = useGetCustomerByUserIdQuery(userIdForCustomer || '', {
         skip: !userIdForCustomer,
     });
+    const { data: vehiclesData, refetch: refetchVehicles } = useGetCustomerVehiclesQuery(userIdForCustomer || '', {
+        skip: !userIdForCustomer,
+    });
 
     useEffect(() => {
         if (customerData) {
@@ -33,6 +36,63 @@ export default function AuthScreen() {
             dispatch(setCustomer(customerData));
         }
     }, [customerData, dispatch]);
+
+    useEffect(() => {
+        if (vehiclesData) {
+            console.log('Vehicles Data:', vehiclesData);
+            if (vehiclesData.vehicles) {
+              const transformedVehicles = vehiclesData.vehicles.map((vehicle: any) => {
+                // Fetch speed data synchronously or use a placeholder
+                // Since hooks can't be used in loops, we'll set status later
+                return {
+                  id: vehicle.id,
+                  name: vehicle.vehicle_model,
+                  location: 'Unknown', // Placeholder, as location isn't in the data
+                  status: 'Loading...', // Placeholder, will be updated
+                  plate: vehicle.vehicle_plate,
+                  serial: vehicle.device_serial,
+                };
+              });
+              dispatch(setVehicles(transformedVehicles));
+
+              // Now fetch speed for each vehicle and update status
+              vehiclesData.vehicles.forEach(async (vehicle: any, index: number) => {
+                if (vehicle.device_serial) {
+                  try {
+                    const speedResponse = await fetch(`http://192.168.10.41:3003/api/customers/speed/${vehicle.device_serial}`);
+                    const speedData = await speedResponse.json();
+                    const speedEntries = speedData.speed_data || [];
+
+                    if (Array.isArray(speedEntries) && speedEntries.length > 0) {
+                      // Sort by time descending to get latest
+                      const sortedEntries = speedEntries.sort((a: any, b: any) => parseInt(b.time) - parseInt(a.time));
+                      const latestSpeed = Number(sortedEntries[0].speed || 0);
+                      const status = latestSpeed > 0 ? 'Moving' : 'Parked';
+
+                      // Update the vehicle status in Redux
+                      const updatedVehicles = [...transformedVehicles];
+                      updatedVehicles[index] = { ...updatedVehicles[index], status };
+                      dispatch(setVehicles(updatedVehicles));
+                    } else {
+                      // No speed data, set to Parked
+                      const updatedVehicles = [...transformedVehicles];
+                      updatedVehicles[index] = { ...updatedVehicles[index], status: 'Parked' };
+                      dispatch(setVehicles(updatedVehicles));
+                    }
+                  } catch (error) {
+                    console.log('Error fetching speed for', vehicle.device_serial, error);
+                    // Set to Parked on error
+                    const updatedVehicles = [...transformedVehicles];
+                    updatedVehicles[index] = { ...updatedVehicles[index], status: 'Parked' };
+                    dispatch(setVehicles(updatedVehicles));
+                  }
+                }
+              });
+
+
+            }
+        }
+    }, [vehiclesData, dispatch]);
 
     const handleLogin = async () => {
         let valid = true;

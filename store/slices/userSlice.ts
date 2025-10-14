@@ -41,9 +41,19 @@ interface Customer {
   };
 }
 
+interface Vehicle {
+  id: string;
+  name: string;
+  location: string;
+  status: string;
+  plate?: string;
+  serial?: string;
+}
+
 interface UserState {
   user: User | null;
   customer: Customer | null;
+  vehicles: Vehicle[] | null;
   userId: string | null;
   token: string | null;
   refreshToken: string | null;
@@ -53,6 +63,7 @@ interface UserState {
 const initialState: UserState = {
   user: null,
   customer: null,
+  vehicles: null,
   userId: null,
   token: null,
   refreshToken: null,
@@ -73,9 +84,13 @@ const userSlice = createSlice({
     setCustomer: (state, action: PayloadAction<Customer>) => {
       state.customer = action.payload;
     },
+    setVehicles: (state, action: PayloadAction<Vehicle[]>) => {
+      state.vehicles = action.payload;
+    },
     logout: (state) => {
       state.user = null;
       state.customer = null;
+      state.vehicles = null;
       state.token = null;
       state.refreshToken = null;
       state.userId = null;
@@ -84,5 +99,5 @@ const userSlice = createSlice({
   },
 });
 
-export const { setUser, setCustomer, logout } = userSlice.actions;
+export const { setUser, setCustomer, setVehicles, logout } = userSlice.actions;
 export default userSlice.reducer;

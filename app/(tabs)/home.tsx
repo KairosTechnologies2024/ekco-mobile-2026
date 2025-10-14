@@ -4,11 +4,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { setVehicles } from '../../store/slices/userSlice';
 import { RootState } from '../../store/store';
+
 export default function Home() {
   const router = useRouter();
+  const dispatch = useDispatch();
   const customer = useSelector((state: RootState) => state.user.customer);
+  const vehicles = useSelector((state: RootState) => state.user.vehicles);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -124,7 +128,7 @@ export default function Home() {
     };
   }, []);
 
-  const vehicles = [
+  const dummyVehicles = [
     { id: 1, name: 'Toyota Camry', location: 'Downtown', status: 'Moving' },
     { id: 2, name: 'Honda Civic', location: 'Suburb', status: 'Parked' },
     { id: 3, name: 'Ford Mustang', location: 'Highway', status: 'Moving' },
@@ -137,11 +141,54 @@ export default function Home() {
     { id: 10, name: 'Hyundai Sonata', location: 'Mall', status: 'Parked' },
   ];
 
+  const displayVehicles = (vehicles && Array.isArray(vehicles) && vehicles.length > 0) ? vehicles : dummyVehicles;
+
   const dummyCoords = [
     { latitude: -26.2041, longitude: 28.0473 },
     { latitude: -26.2441, longitude: 28.0873 },
     { latitude: -26.2841, longitude: 28.1273 },
   ];
+
+  // WebSocket connection for live speed updates
+  useEffect(() => {
+    const ws = new WebSocket('ws://192.168.10.41:3003');
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'speed_update' && data.data) {
+          // Update vehicle statuses based on live speed data
+          const updatedVehicles = displayVehicles.map(vehicle => {
+            const speedEntry = data.data.find((entry: any) => entry.device_serial === (vehicle as any).serial);
+            if (speedEntry) {
+              const status = speedEntry.speed > 0 ? 'Moving' : 'Parked';
+              return { ...vehicle, status };
+            }
+            return vehicle;
+          });
+          dispatch(setVehicles(updatedVehicles as any));
+        }
+      } catch (error) {
+        console.log('Error parsing WebSocket message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.log('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [displayVehicles, dispatch]);
 
   return (
     <SafeAreaView className="flex-1 px-4">
@@ -219,7 +266,7 @@ export default function Home() {
             }}
             onPress={toggleMapFullScreen}
           >
-            {vehicles.slice(0,3).map((vehicle, index) => {
+            {displayVehicles.slice(0,3).map((vehicle, index) => {
               const pinColors = ['red', 'blue', 'green'];
               const color = pinColors[index % 3];
               const coords = dummyCoords[index % dummyCoords.length];
@@ -242,7 +289,7 @@ export default function Home() {
               onScroll={handleVehicleScroll}
               scrollEventThrottle={16}
             >
-              {vehicles.map((vehicle, index) => {
+              {displayVehicles.map((vehicle, index) => {
                 const pinColors = ['red', 'blue', 'green'];
                 const color = pinColors[index % 3];
                 return (
@@ -289,7 +336,7 @@ export default function Home() {
               longitudeDelta: 0.1,
             }}
           >
-            {vehicles.slice(0,3).map((vehicle, index) => {
+            {displayVehicles.slice(0,3).map((vehicle, index) => {
               const pinColors = ['red', 'blue', 'green'];
               const color = pinColors[index % 3];
               const coords = dummyCoords[index % dummyCoords.length];
@@ -355,7 +402,7 @@ export default function Home() {
             </View>
 
             <ScrollView className="flex-1 px-4">
-              {vehicles.map((vehicle, index) => {
+              {displayVehicles.map((vehicle, index) => {
                 const pinColors = ['red', 'blue', 'green'];
                 const color = pinColors[index % 3];
                 return (
