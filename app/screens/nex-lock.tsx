@@ -2,13 +2,13 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, StatusBar, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function NexLock() {
   const router = useRouter();
   const colorScheme = useColorScheme();
-
+StatusBar.setBarStyle(colorScheme === 'dark' ? 'light-content' : 'dark-content');
   const features = [
     {
       icon: "lock-closed-outline",
@@ -58,7 +58,7 @@ export default function NexLock() {
         <Pressable onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={colorScheme === 'dark' ? '#fff' : '#000'} />
         </Pressable>
-        <Text className="text-xl font-bold ml-4 text-black dark:text-white">Nex-Lock</Text>
+        <Text className="text-xl font-bold ml-4 dark:text-white">Nex-Lock</Text>
       </View>
 
       <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
@@ -68,14 +68,14 @@ export default function NexLock() {
             <Ionicons
               name="lock-closed-outline"
               size={32}
-              color="#000"
+              color={colorScheme === 'dark' ? '#fff' : '#000'}
               style={{ marginRight: 12 }}
             />
-            <Text className="text-2xl font-bold text-black">Nex-Lock</Text>
+            <Text className="text-2xl font-bold dark:text-white">Nex-Lock</Text>
           </View>
 
-          <Text className="text-black text-lg mb-2">Next Generation Fleet Security</Text>
-          <Text className="text-black leading-6">
+          <Text className=" text-lg mb-2 dark:text-white">Next Generation Fleet Security</Text>
+          <Text className=" leading-6 dark:text-white">
             Advanced vehicle locking system designed specifically for fleet management. Secure your vehicles with cutting-edge technology that integrates seamlessly with Ekco's tracking solutions.
           </Text>
         </View>

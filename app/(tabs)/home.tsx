@@ -4,8 +4,18 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Image, Pressable, ScrollView, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../store/store';
 export default function Home() {
   const router = useRouter();
+  const customer = useSelector((state: RootState) => state.user.customer);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const dropdownAnim = useRef(new Animated.Value(0)).current;
@@ -138,7 +148,7 @@ export default function Home() {
       <View className="flex-row justify-between items-center px-4 py-4">
         {/* Left Side - Greeting */}
         <Text className="text-3xl font-bold">
-          Good morning, {'\n'}Nhlamulo 😁
+          {getGreeting()}, {'\n'}{customer?.user?.first_name || 'User'} 😁
         </Text>
 
         {/* Right Side - Profile Pic and Notification Bell */}

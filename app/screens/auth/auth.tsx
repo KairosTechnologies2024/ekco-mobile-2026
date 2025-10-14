@@ -1,8 +1,8 @@
-import { useLoginMutation } from '@/store/api/authApi';
-import { setUser } from '@/store/slices/userSlice';
+import { useGetCustomerByUserIdQuery, useLoginMutation } from '@/store/api/authApi';
+import { setCustomer, setUser } from '@/store/slices/userSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Image,
@@ -22,6 +22,17 @@ export default function AuthScreen() {
     const router = useRouter();
     const dispatch = useDispatch();
     const [login, { isLoading }] = useLoginMutation();
+    const [userIdForCustomer, setUserIdForCustomer] = useState<string | null>(null);
+    const { data: customerData, refetch: refetchCustomer } = useGetCustomerByUserIdQuery(userIdForCustomer || '', {
+        skip: !userIdForCustomer,
+    });
+
+    useEffect(() => {
+        if (customerData) {
+            console.log('Customer Data:', customerData);
+            dispatch(setCustomer(customerData));
+        }
+    }, [customerData, dispatch]);
 
     const handleLogin = async () => {
         let valid = true;
@@ -48,6 +59,10 @@ export default function AuthScreen() {
             }
 
             dispatch(setUser({ user: userData.user, token: userData.token }));
+
+            // Trigger fetch of customer data after successful login
+            setUserIdForCustomer(userData.user.id);
+
             setModalVisible(true);
             setTimeout(() => {
                 setModalVisible(false);
