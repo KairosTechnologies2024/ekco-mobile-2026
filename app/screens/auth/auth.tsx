@@ -55,32 +55,44 @@ export default function AuthScreen() {
               });
               dispatch(setVehicles(transformedVehicles));
 
-              // Now fetch speed for each vehicle and update status
+              // Now fetch speed and GPS for each vehicle and update status and position
               vehiclesData.vehicles.forEach(async (vehicle: any, index: number) => {
                 if (vehicle.device_serial) {
                   try {
+                    // Fetch speed data
                     const speedResponse = await fetch(`http://192.168.10.41:3003/api/customers/speed/${vehicle.device_serial}`);
                     const speedData = await speedResponse.json();
                     const speedEntries = speedData.speed_data || [];
 
+                    let status = 'Parked';
                     if (Array.isArray(speedEntries) && speedEntries.length > 0) {
                       // Sort by time descending to get latest
                       const sortedEntries = speedEntries.sort((a: any, b: any) => parseInt(b.time) - parseInt(a.time));
                       const latestSpeed = Number(sortedEntries[0].speed || 0);
-                      const status = latestSpeed > 0 ? 'Moving' : 'Parked';
-
-                      // Update the vehicle status in Redux
-                      const updatedVehicles = [...transformedVehicles];
-                      updatedVehicles[index] = { ...updatedVehicles[index], status };
-                      dispatch(setVehicles(updatedVehicles));
-                    } else {
-                      // No speed data, set to Parked
-                      const updatedVehicles = [...transformedVehicles];
-                      updatedVehicles[index] = { ...updatedVehicles[index], status: 'Parked' };
-                      dispatch(setVehicles(updatedVehicles));
+                      status = latestSpeed > 0 ? 'Moving' : 'Parked';
                     }
+
+                    // Fetch GPS data
+                    const gpsResponse = await fetch(`http://192.168.10.41:3003/api/customers/gps/${vehicle.device_serial}`);
+                    const gpsData = await gpsResponse.json();
+                    console.log('GPS Data for', vehicle.device_serial, ':', gpsData);
+                    const gpsEntries = gpsData.gps_data || [];
+
+                    let latitude = null;
+                    let longitude = null;
+                    if (Array.isArray(gpsEntries) && gpsEntries.length > 0) {
+                      // Sort by time descending to get latest
+                      const sortedGpsEntries = gpsEntries.sort((a: any, b: any) => parseInt(b.time) - parseInt(a.time));
+                      latitude = Number(sortedGpsEntries[0].latitude);
+                      longitude = Number(sortedGpsEntries[0].longitude);
+                    }
+
+                    // Update the vehicle status and position in Redux
+                    const updatedVehicles = [...transformedVehicles];
+                    updatedVehicles[index] = { ...updatedVehicles[index], status, latitude, longitude };
+                    dispatch(setVehicles(updatedVehicles));
                   } catch (error) {
-                    console.log('Error fetching speed for', vehicle.device_serial, error);
+                    console.log('Error fetching data for', vehicle.device_serial, error);
                     // Set to Parked on error
                     const updatedVehicles = [...transformedVehicles];
                     updatedVehicles[index] = { ...updatedVehicles[index], status: 'Parked' };

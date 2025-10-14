@@ -160,17 +160,97 @@ export default function Home() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'speed_update' && data.data) {
-          // Update vehicle statuses based on live speed data
-          const updatedVehicles = displayVehicles.map(vehicle => {
-            const speedEntry = data.data.find((entry: any) => entry.device_serial === (vehicle as any).serial);
-            if (speedEntry) {
-              const status = speedEntry.speed > 0 ? 'Moving' : 'Parked';
-              return { ...vehicle, status };
+
+        // Helper: normalize incoming payload to an array of rows with device_serial and time
+        const normalizeToRows = (payload: any) => {
+          if (!payload) return [];
+          // If payload is already an array of rows
+          if (Array.isArray(payload)) return payload;
+
+          // If payload contains gps_data or speed_data arrays for a single device_serial
+          if (payload.gps_data && payload.device_serial) {
+            return payload.gps_data.map((r: any) => ({ ...r, device_serial: payload.device_serial }));
+          }
+          if (payload.speed_data && payload.device_serial) {
+            return payload.speed_data.map((r: any) => ({ ...r, device_serial: payload.device_serial }));
+          }
+
+          // If payload is an object with nested arrays, try to collect them
+          const collected: any[] = [];
+          for (const key of Object.keys(payload)) {
+            const val = payload[key];
+            if (Array.isArray(val)) {
+              // If entries already include device_serial, use as-is
+              if (val.length > 0 && 'device_serial' in val[0]) {
+                collected.push(...val);
+              } else if (payload.device_serial) {
+                collected.push(...val.map((r: any) => ({ ...r, device_serial: payload.device_serial })));
+              }
             }
-            return vehicle;
-          });
-          dispatch(setVehicles(updatedVehicles as any));
+          }
+          return collected;
+        };
+
+        let rows: any[] = [];
+        // data.data may be array or a nested object with gps_data/speed_data
+        if (data && data.data) {
+          rows = normalizeToRows(data.data);
+        } else {
+          rows = normalizeToRows(data);
+        }
+
+        if (!rows || rows.length === 0) {
+          return;
+        }
+
+        // Build a map of latest row per device_serial by numeric time
+        const latestBySerial: Record<string, any> = {};
+        rows.forEach((r: any) => {
+          const serial = r.device_serial ?? r.serial ?? r.deviceSerial ?? null;
+          if (!serial) return;
+          const t = parseInt(r.time?.toString?.() ?? '0', 10) || 0;
+          if (!latestBySerial[serial] || (parseInt(latestBySerial[serial].time?.toString?.() ?? '0', 10) || 0) < t) {
+            latestBySerial[serial] = r;
+          }
+        });
+
+        if (Object.keys(latestBySerial).length === 0) return;
+
+        // Update current vehicles from store (not displayVehicles) to reflect latest state
+        const currentVehicles = vehicles && Array.isArray(vehicles) ? vehicles.slice() : [];
+        let changed = false;
+
+        const updated = currentVehicles.map((vehicle) => {
+          const serial = (vehicle as any).serial?.toString?.();
+          if (!serial) return vehicle;
+          const latest = latestBySerial[serial];
+          if (!latest) return vehicle;
+
+          // Extract lat/lng and speed from latest row (support gps_data rows or speed rows)
+          const lat = latest.latitude ?? latest.lat ?? latest.lat_dd ?? null;
+          const lon = latest.longitude ?? latest.lng ?? latest.lon ?? latest.long ?? null;
+          const speed = Number(latest.speed ?? latest.s ?? 0) || 0;
+          const status = speed > 0 ? 'Moving' : 'Parked';
+
+          const newVehicle = { ...vehicle } as any;
+          if (lat !== null && lon !== null) {
+            newVehicle.latitude = Number(lat);
+            newVehicle.longitude = Number(lon);
+          }
+          if (newVehicle.status !== status) {
+            newVehicle.status = status;
+            changed = true;
+          }
+          // If lat/lon changed, also mark changed
+          if ((lat !== null && newVehicle.latitude !== Number(lat)) || (lon !== null && newVehicle.longitude !== Number(lon))) {
+            changed = true;
+          }
+
+          return newVehicle;
+        });
+
+        if (changed) {
+          dispatch(setVehicles(updated as any));
         }
       } catch (error) {
         console.log('Error parsing WebSocket message:', error);
@@ -269,7 +349,11 @@ export default function Home() {
             {displayVehicles.slice(0,3).map((vehicle, index) => {
               const pinColors = ['red', 'blue', 'green'];
               const color = pinColors[index % 3];
-              const coords = dummyCoords[index % dummyCoords.length];
+              const hasLat = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
+              const hasLon = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
+              const coords = hasLat && hasLon
+                ? { latitude: Number((vehicle as any).latitude), longitude: Number((vehicle as any).longitude) }
+                : dummyCoords[index % dummyCoords.length];
               return (
                 <Marker
                   key={vehicle.id}
@@ -292,6 +376,13 @@ export default function Home() {
               {displayVehicles.map((vehicle, index) => {
                 const pinColors = ['red', 'blue', 'green'];
                 const color = pinColors[index % 3];
+                // compute a location display: prefer vehicle.location unless it's the placeholder 'Unknown',
+                // otherwise show last known coordinates (latitude, longitude) if available
+                const hasLat = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
+                const hasLon = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
+                const coordText = hasLat && hasLon ? `${Number((vehicle as any).latitude).toFixed(5)}, ${Number((vehicle as any).longitude).toFixed(5)}` : null;
+                const locText = vehicle.location && vehicle.location !== 'Unknown' ? vehicle.location : (coordText ?? 'Unknown');
+
                 return (
                   <Pressable
                     key={vehicle.id}
@@ -306,7 +397,7 @@ export default function Home() {
                     <Ionicons name="car" size={40} color={color} />
                     <View className="ml-4">
                       <Text className="text-lg font-bold">{vehicle.name}</Text>
-                      <Text className="text-gray-600">{vehicle.location}</Text>
+                      <Text className="text-gray-600">{locText}</Text>
                       <Text className="text-gray-600">{vehicle.status}</Text>
                     </View>
                   </Pressable>
@@ -339,7 +430,11 @@ export default function Home() {
             {displayVehicles.slice(0,3).map((vehicle, index) => {
               const pinColors = ['red', 'blue', 'green'];
               const color = pinColors[index % 3];
-              const coords = dummyCoords[index % dummyCoords.length];
+              const hasLat2 = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
+              const hasLon2 = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
+              const coords = hasLat2 && hasLon2
+                ? { latitude: Number((vehicle as any).latitude), longitude: Number((vehicle as any).longitude) }
+                : dummyCoords[index % dummyCoords.length];
               return (
                 <Marker
                   key={vehicle.id}
@@ -405,6 +500,11 @@ export default function Home() {
               {displayVehicles.map((vehicle, index) => {
                 const pinColors = ['red', 'blue', 'green'];
                 const color = pinColors[index % 3];
+                const hasLat2 = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
+                const hasLon2 = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
+                const coordText2 = hasLat2 && hasLon2 ? `${Number((vehicle as any).latitude).toFixed(5)}, ${Number((vehicle as any).longitude).toFixed(5)}` : null;
+                const locText2 = vehicle.location && vehicle.location !== 'Unknown' ? vehicle.location : (coordText2 ?? 'Unknown');
+
                 return (
                   <Pressable
                     key={vehicle.id}
@@ -419,7 +519,7 @@ export default function Home() {
                     <Ionicons name="car" size={40} color={color} />
                     <View className="ml-4 flex-1">
                       <Text className="text-lg font-bold">{vehicle.name}</Text>
-                      <Text className="text-gray-600">{vehicle.location}</Text>
+                      <Text className="text-gray-600">{locText2}</Text>
                       <Text className="text-gray-600">{vehicle.status}</Text>
                     </View>
                   </Pressable>

@@ -61,6 +61,9 @@ export const authApi = createApi({
     getCustomerByUserId: builder.query({
       query: (userId) => `/customers/customer/${userId}`,
     }),
+    getGpsBySerial: builder.query({
+      query: (serial) => `/customers/gps/${serial}`,
+    }),
     getVehicleSpeed: builder.query({
       query: (serial) => `/customers/speed/${serial}`,
     }),
@@ -70,4 +73,4 @@ export const authApi = createApi({
   }),
 });
 
-export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation, useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useGetVehicleSpeedQuery } = authApi;
+export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation, useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useGetVehicleSpeedQuery, useGetGpsBySerialQuery } = authApi;
