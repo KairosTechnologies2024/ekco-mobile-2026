@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import { Provider } from "react-redux";
 import Sidebar from "../components/Sidebar";
+import { authApi } from "../store/api/authApi";
 
 import "../global.css";
 
@@ -73,6 +74,44 @@ export default function Layout() {
 
     return () => subscription.remove();
   }, [router]);
+
+  // WebSocket connection for live alerts updates
+  useEffect(() => {
+    const ws = new WebSocket('ws://192.168.10.41:3003');
+
+    ws.onopen = () => {
+      console.log('WebSocket connected for alerts');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'alert_update' && data.data) {
+          const alerts = Array.isArray(data.data) ? data.data : [data.data];
+          alerts.forEach((alert: any) => {
+            if (alert.device_serial) {
+              // Invalidate the cache for this serial to trigger refetch
+              store.dispatch(authApi.util.invalidateTags([{ type: 'Alerts', id: alert.device_serial }]));
+            }
+          });
+        }
+      } catch (error) {
+        console.log('Error parsing WebSocket alert message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.log('WebSocket error for alerts:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected for alerts');
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
 
   return (
     <Provider store={store}>

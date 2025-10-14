@@ -1,6 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+
+import { useSelector } from 'react-redux';
+import { useGetAlertsBySerialQuery } from '../../store/api/authApi';
+import { RootState } from '../../store/store';
 
 const dummyCars = [
   { id: 'car1', name: 'BMW 2020 X3' },
@@ -31,25 +35,84 @@ const generateDummyAlerts = () => {
 
 
 
-const endsWithWords= 'Detected' || 'Disconnected';
 export const dummyAlerts = generateDummyAlerts();
 
 export default function Alerts() {
-  const [selectedCar, setSelectedCar] = useState(dummyCars[0].id)
+  const storeVehicles = useSelector((state: RootState) => state.user.vehicles) ?? [];
+  // Map Redux vehicles to the simple shape used in this screen
+  const vehiclesList = (Array.isArray(storeVehicles) && storeVehicles.length > 0)
+    ? storeVehicles.map((v: any) => ({ id: v.id?.toString?.() ?? v.id, name: v.name ?? `Vehicle ${v.id}` }))
+    : dummyCars;
+
+  const [selectedCar, setSelectedCar] = useState(vehiclesList[0]?.id ?? dummyCars[0].id);
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
-  const filteredAlerts = dummyAlerts.filter(alert => alert.carId === selectedCar)
-  const selectedCarName = dummyCars.find(car => car.id === selectedCar)?.name || 'Select Car'
+  // find selected vehicle object from store vehicles
+  const selectedVehicle = (Array.isArray(storeVehicles) && storeVehicles.length > 0)
+    ? storeVehicles.find((v: any) => (v.id?.toString?.() ?? v.id) === selectedCar)
+    : null;
+
+  const serial = selectedVehicle?.serial ?? null;
+  const { data: alertsData, isLoading, error } = useGetAlertsBySerialQuery(serial, {
+    skip: !serial,
+  });
+
+  // Extract alerts from RTK Query response
+  const alerts = alertsData ? (alertsData.alerts ?? alertsData.data ?? (Array.isArray(alertsData) ? alertsData : [])) : null;
+
+  // Log alerts object when available
+  useEffect(() => {
+    if (alerts) {
+      console.log('Alerts object:', alerts);
+    }
+  }, [alerts]);
+
+  // Normalize alerts into a consistent shape for the UI
+  const normalizedAlerts = (alerts && Array.isArray(alerts)) ? alerts.map((a: any, idx: number) => {
+    const rawType = a.alert ?? a.alertType ?? '';
+    const type = typeof rawType === 'string' ? rawType : String(rawType);
+    const message = a.alertMessage ?? a.message ?? a.alert ?? '';
+    const timeStr = a.time ?? a.timestamp ?? a.timeStamp ?? null;
+    let timestamp = '';
+    let timeNum = 0;
+    if (timeStr) {
+      try {
+        // time may be a unix seconds string
+        const tnum = parseInt(timeStr.toString(), 10);
+        if (!Number.isNaN(tnum)) {
+          timeNum = tnum;
+          timestamp = new Date(tnum * 1000).toLocaleString();
+        } else {
+          timestamp = String(timeStr);
+        }
+      } catch (e) {
+        timestamp = String(timeStr);
+      }
+    }
+    return {
+      id: a.id ?? `${a.device_serial ?? 'unknown'}-${timeStr ?? idx}`,
+      type,
+      message,
+      timestamp,
+      device_serial: a.device_serial ?? a.serial ?? null,
+      timeNum,
+    };
+  }) : null;
+
+  // Sort normalized alerts newest-first and limit to top 100
+  const filteredAlerts = normalizedAlerts
+    ? normalizedAlerts.sort((a: any, b: any) => (b.timeNum || 0) - (a.timeNum || 0)).slice(0, 100)
+    : dummyAlerts.filter(alert => alert.carId === selectedCar).slice(0, 100)
+  const selectedCarName = vehiclesList.find(car => car.id === selectedCar)?.name || 'Select Car'
 
   const getIconName = (alertType: string) => {
-    switch (alertType) {
-      case 'Ignition On': return 'key';
-      case 'Door Open': return 'lock-open';
-      case 'Remote Jamming Detected': return 'radio';
-      case 'Smash and Grab Detected': return 'shield';
-      case 'Car Battery Disconnected': return 'battery-half';
-      default: return 'alert-circle';
-    }
+    const lc = (alertType ?? '').toString().toLowerCase();
+    if (lc.includes('ignition')) return 'key';
+    if (lc.includes('door')) return 'lock-open';
+    if (lc.includes('jamming') || lc.includes('remote jamming')) return 'radio';
+    if (lc.includes('smash') || lc.includes('grab')) return 'shield';
+    if (lc.includes('battery') || lc.includes('disconnected')) return 'battery-half';
+    return 'alert-circle';
   }
 
   return (
@@ -64,7 +127,7 @@ export default function Alerts() {
         </TouchableOpacity>
         {dropdownOpen && (
           <View className="mb-4 border border-gray-300 rounded bg-white">
-            {dummyCars.map(car => (
+            {vehiclesList.map(car => (
               <TouchableOpacity
                 key={car.id}
                 onPress={() => {
@@ -81,21 +144,32 @@ export default function Alerts() {
 
     
         {filteredAlerts.length > 0 ? (
-          filteredAlerts.map(alert => (
-          <View key={alert.id} className="mb-3 p-3 border border-gray-300 rounded bg-gray-50 flex-row items-center">
-            <Ionicons
-              name={getIconName(alert.alertType)}
-              size={20}
-              color={alert.alertType.endsWith('Detected') ? 'red' : 'black'}
-              style={{ marginRight: 12 }}
-            />
-            <View className="flex-1">
-              <Text className={`font-semibold ${alert.alertType.endsWith(endsWithWords) ? 'text-red-500' : 'text-black'}`}>{alert.alertType}</Text>
-              <Text>{alert.alertMessage}</Text>
-              <Text className="text-xs text-gray-500">{alert.timestamp}</Text>
-            </View>
-          </View>
-          ))
+          filteredAlerts.map((alert: any) => {
+            // support multiple shapes: normalized {type,message,timestamp} or raw {alert,alertType,alertMessage,time}
+            const rawType = alert.type ?? alert.alert ?? alert.alertType ?? '';
+            const title = String(rawType ?? '');
+            const message = alert.message ?? alert.alertMessage ?? alert.alert ?? '';
+            const ts = alert.timestamp ?? alert.time ?? '';
+
+            const lcTitle = title.toLowerCase();
+            const isCritical = lcTitle.endsWith('detected') || lcTitle.endsWith('disconnected') || lcTitle.includes('disconnected') || lcTitle.includes('smash') || lcTitle.includes('jamming');
+
+            return (
+              <View key={alert.id ?? `${alert.device_serial}-${ts}` } className="mb-3 p-3 border border-gray-300 rounded bg-gray-50 flex-row items-center">
+                <Ionicons
+                  name={getIconName(title)}
+                  size={20}
+                  color={isCritical ? 'red' : 'black'}
+                  style={{ marginRight: 12 }}
+                />
+                <View className="flex-1">
+                  <Text className={`font-semibold ${isCritical ? 'text-red-500' : 'text-black'}`}>{title}</Text>
+                  <Text>{message}</Text>
+                  <Text className="text-xs text-gray-500">{ts}</Text>
+                </View>
+              </View>
+            );
+          })
         ) : (
           <Text>No alerts for this car.</Text>
         )}

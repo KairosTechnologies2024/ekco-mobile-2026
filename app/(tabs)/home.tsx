@@ -142,6 +142,7 @@ export default function Home() {
   ];
 
   const displayVehicles = (vehicles && Array.isArray(vehicles) && vehicles.length > 0) ? vehicles : dummyVehicles;
+  const isSingleVehicle = displayVehicles.length === 1;
 
   const dummyCoords = [
     { latitude: -26.2041, longitude: 28.0473 },
@@ -283,9 +284,9 @@ export default function Home() {
           {/* Notification Bell with Badge */}
           <Pressable onPress={() => router.push('/alerts')} className="relative mr-4">
             <Ionicons name="notifications-outline" size={32} color="black" />
-            {/* Unread Badge */}
+            {/* Unread Badge - will be updated to show critical alerts count */}
             <View className="absolute top-0 right-0 bg-red-500 rounded-full w-4 h-4 items-center justify-center">
-              <Text className="text-white text-xs">3</Text>
+              <Text className="text-white text-xs">0</Text>
             </View>
           </Pressable>
 
@@ -323,21 +324,23 @@ export default function Home() {
           
           </View>
 
-          <View className="mt-4 ">
-            <View className="flex-row items-center bg-white rounded-full px-4 border border-gray-400">
+          {!isSingleVehicle && (
+            <View className="mt-4 ">
+              <View className="flex-row items-center bg-white rounded-full px-4 border border-gray-400">
 
-              <TextInput
-                placeholder="search vehicle"
-                className="flex-1 ml-2 "
-              />
-                <Ionicons name="search" size={20} color="gray" />
+                <TextInput
+                  placeholder="search vehicle"
+                  className="flex-1 ml-2 "
+                />
+                  <Ionicons name="search" size={20} color="gray" />
+              </View>
             </View>
-          </View>
+          )}
 
           <Text className="text-xl font-bold mt-4 px-4">Your Vehicle(s) Current Position</Text>
 
           <MapView
-            style={mapFullScreen ? { flex: 1 } : { height: 192, marginHorizontal: 16, marginTop: 8, borderRadius: 8 }}
+            style={mapFullScreen ? { flex: 1 } : isSingleVehicle ? { flex: 1, marginHorizontal: 16, marginTop: 8, borderRadius: 8 } : { height: 192, marginHorizontal: 16, marginTop: 8, borderRadius: 8 }}
             initialRegion={{
               latitude: -26.2041,
               longitude: 28.0473,
@@ -366,10 +369,10 @@ export default function Home() {
             })}
           </MapView>
 
-          <Pressable onPress={toggleVehiclesFullScreen} style={vehiclesFullScreen ? { flex: 1 } : { maxHeight: 300 }}>
+          <Pressable onPress={toggleVehiclesFullScreen} style={vehiclesFullScreen ? { flex: 1 } : isSingleVehicle ? {} : { maxHeight: 300 }}>
             <ScrollView
               className="mt-4"
-              style={vehiclesFullScreen ? { flex: 1 } : { maxHeight: 300 }}
+              style={vehiclesFullScreen ? { flex: 1 } : isSingleVehicle ? { height: 120 } : { maxHeight: 300 }}
               onScroll={handleVehicleScroll}
               scrollEventThrottle={16}
             >

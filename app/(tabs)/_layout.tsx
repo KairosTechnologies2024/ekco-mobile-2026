@@ -2,14 +2,46 @@
 // TabsLayout.tsx
 import { Entypo } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import { StatusBar, Text, TouchableOpacity, View } from "react-native";
 import { enableScreens } from "react-native-screens";
+import { useSelector } from "react-redux";
+import { useGetAlertsBySerialQuery } from "../../store/api/authApi";
+import { RootState } from "../../store/store";
 
 export default function TabsLayout() {
   enableScreens();
 
-  const criticalCount = 32;
+  const storeVehicles = useSelector((state: RootState) => state.user.vehicles) ?? [];
+  const vehiclesWithSerial = useMemo(() =>
+    (Array.isArray(storeVehicles) && storeVehicles.length > 0)
+      ? storeVehicles.filter((v: any) => v.serial)
+      : [],
+    [storeVehicles]
+  );
+
+  // Fetch alerts for all vehicles with serials
+  const alertsQueries = vehiclesWithSerial.map(vehicle =>
+    useGetAlertsBySerialQuery(vehicle.serial, { skip: !vehicle.serial })
+  );
+
+  // Calculate total critical alerts
+  const criticalCount = useMemo(() =>
+    alertsQueries.reduce((total, query) => {
+      if (query.data) {
+        const alerts = query.data.alerts ?? query.data.data ?? (Array.isArray(query.data) ? query.data : []);
+        if (Array.isArray(alerts)) {
+          const critical = alerts.filter((alert: any) => {
+            const type = (alert.alert ?? alert.alertType ?? '').toString().toLowerCase();
+            return type.endsWith('detected') || type.endsWith('disconnected') || type.includes('disconnected') || type.includes('smash') || type.includes('jamming');
+          });
+          return total + critical.length;
+        }
+      }
+      return total;
+    }, 0),
+    [alertsQueries]
+  );
 
   return (
 <>
