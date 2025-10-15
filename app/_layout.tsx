@@ -1,3 +1,4 @@
+import WebSocketService from "@/services/WebSocketService";
 import { store } from "@/store/store";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from 'expo-linking';
@@ -8,8 +9,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import { Provider } from "react-redux";
 import Sidebar from "../components/Sidebar";
-import { authApi } from "../store/api/authApi";
-
 import "../global.css";
 
 export default function Layout() {
@@ -31,6 +30,7 @@ export default function Layout() {
   }));
 
   const isAuthScreen = segments.some(seg => seg === 'auth');
+  const isLocationScreen = segments.some(seg => seg === 'location');
 
   const handleLogout = () => {
     Alert.alert(
@@ -75,41 +75,17 @@ export default function Layout() {
     return () => subscription.remove();
   }, [router]);
 
-  // WebSocket connection for live alerts updates
+  // Single WebSocket connection for the entire app
   useEffect(() => {
-    const ws = new WebSocket('ws://192.168.10.41:3003');
+    const wsService = WebSocketService.getInstance();
+    wsService.connect();
 
-    ws.onopen = () => {
-      console.log('WebSocket connected for alerts');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'alert_update' && data.data) {
-          const alerts = Array.isArray(data.data) ? data.data : [data.data];
-          alerts.forEach((alert: any) => {
-            if (alert.device_serial) {
-              // Invalidate the cache for this serial to trigger refetch
-              store.dispatch(authApi.util.invalidateTags([{ type: 'Alerts', id: alert.device_serial }]));
-            }
-          });
-        }
-      } catch (error) {
-        console.log('Error parsing WebSocket alert message:', error);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.log('WebSocket error for alerts:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket disconnected for alerts');
-    };
+    // Optional: Set up alert handling in the WebSocket service instead
+    // You can modify the WebSocketService to handle alerts too
 
     return () => {
-      ws.close();
+      // Only disconnect if you want to manage connection lifecycle
+      // wsService.disconnect();
     };
   }, []);
 
@@ -128,7 +104,7 @@ export default function Layout() {
         />
         {!isAuthScreen && (
           <>
-            <Animated.View style={[styles.gearButton, animatedStyle]}>
+            <Animated.View style={[styles.gearButton, animatedStyle, isLocationScreen && styles.gearButtonLocation]}>
               <TouchableOpacity
                 onPress={() => setSidebarVisible(true)}
                 style={styles.touchableArea}
@@ -156,6 +132,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 0,
+  },
+  gearButtonLocation: {
+    bottom: 200, // Move up towards the center
   },
   touchableArea: {
     flex: 1,

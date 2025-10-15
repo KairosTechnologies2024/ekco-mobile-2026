@@ -2,8 +2,8 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 export const authApi = createApi({
   reducerPath: 'authApi',
-  baseQuery: fetchBaseQuery({ baseUrl: 'http://192.168.10.41:3003/api' }),
-  tagTypes: ['Alerts'],
+  baseQuery: fetchBaseQuery({ baseUrl: 'http://192.168.10.37:3003/api' }),
+  tagTypes: ['Alerts', 'Speed', 'Ignition'],
   endpoints: (builder) => ({
     login: builder.mutation({
       query: (credentials) => {
@@ -67,6 +67,11 @@ export const authApi = createApi({
     }),
     getVehicleSpeed: builder.query({
       query: (serial) => `/customers/speed/${serial}`,
+      providesTags: ['Speed'],
+    }),
+    getVehicleIgnition: builder.query({
+      query: (serial) => `/customers/ignition/${serial}`,
+      providesTags: ['Ignition'],
     }),
     getCustomerVehicles: builder.query({
       query: (userId) => `/customers/vehicles/${userId}`,
@@ -78,4 +83,4 @@ export const authApi = createApi({
   }),
 });
 
-export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation, useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useGetVehicleSpeedQuery, useGetGpsBySerialQuery, useGetAlertsBySerialQuery } = authApi;
+export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation, useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useGetVehicleSpeedQuery, useGetVehicleIgnitionQuery, useGetGpsBySerialQuery, useGetAlertsBySerialQuery } = authApi;
