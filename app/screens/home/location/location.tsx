@@ -34,23 +34,31 @@ export default function LocationScreen() {
   const selectedVehicle = vehicles?.find((v: any) => v.id === vehicleData.id);
 
   // Fetch speed, ignition, and GPS from API using vehicle serial
-  const { data: speedData, error: speedError, isLoading: speedLoading } = useGetVehicleSpeedQuery(
-    selectedVehicle?.serial || '',
-    { skip: !selectedVehicle?.serial }
-  );
-  const { data: ignitionData, error: ignitionError, isLoading: ignitionLoading } = useGetVehicleIgnitionQuery(
-    selectedVehicle?.serial || '',
-    { skip: !selectedVehicle?.serial }
-  );
-  const { data: gpsData, error: gpsError, isLoading: gpsLoading } = useGetGpsBySerialQuery(
-    selectedVehicle?.serial || '',
-    { skip: !selectedVehicle?.serial }
-  );
+  const { data: speedData } = useGetVehicleSpeedQuery(
+  selectedVehicle?.serial || '',
+  { 
+    skip: !selectedVehicle?.serial,
+    pollingInterval: 1000 // Poll every 5 seconds as backup
+  }
+);
+ const { data: ignitionData } = useGetVehicleIgnitionQuery(
+  selectedVehicle?.serial || '',
+  { 
+    skip: !selectedVehicle?.serial,
+    pollingInterval: 1000 // Poll every 5 seconds as backup
+  }
+);
+
+ const { data: gpsData } = useGetGpsBySerialQuery(
+  selectedVehicle?.serial || '',
+  { 
+    skip: !selectedVehicle?.serial,
+    pollingInterval: 1000 // Poll every 5 seconds as backup
+  }
+);
 
   // Log API data for debugging
-  console.log('Speed data from API:', speedData, 'error:', speedError, 'loading:', speedLoading);
-  console.log('Ignition data from API:', ignitionData, 'error:', ignitionError, 'loading:', ignitionLoading);
-  console.log('GPS data from API:', gpsData, 'error:', gpsError, 'loading:', gpsLoading);
+ 
 
   const [address, setAddress] = useState<string>('');
 

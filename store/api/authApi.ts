@@ -3,7 +3,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 export const authApi = createApi({
   reducerPath: 'authApi',
   baseQuery: fetchBaseQuery({ baseUrl: 'http://192.168.10.37:3003/api' }),
-  tagTypes: ['Alerts', 'Speed', 'Ignition'],
+ tagTypes: ['Alerts', 'Speed', 'Ignition', 'GPS'],
   endpoints: (builder) => ({
     login: builder.mutation({
       query: (credentials) => {
@@ -64,6 +64,7 @@ export const authApi = createApi({
     }),
     getGpsBySerial: builder.query({
       query: (serial) => `/customers/gps/${serial}`,
+       providesTags: ['GPS'],
     }),
     getVehicleSpeed: builder.query({
       query: (serial) => `/customers/speed/${serial}`,
