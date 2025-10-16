@@ -2,8 +2,8 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 
 export const authApi = createApi({
   reducerPath: 'authApi',
-  baseQuery: fetchBaseQuery({ baseUrl: 'http://192.168.10.37:3003/api' }),
- tagTypes: ['Alerts', 'Speed', 'Ignition', 'GPS'],
+  baseQuery: fetchBaseQuery({ baseUrl: 'http://192.168.10.26:3003/api' }),
+ tagTypes: ['Alerts', 'Speed', 'Ignition', 'GPS', 'Tickets'],
   endpoints: (builder) => ({
     login: builder.mutation({
       query: (credentials) => {
@@ -81,7 +81,31 @@ export const authApi = createApi({
       query: (serial) => `/customers/alerts/serial/${serial}`,
       providesTags: (result, error, serial) => [{ type: 'Alerts', id: serial }],
     }),
+    createTicket: builder.mutation({
+  query: ({ userId, customerId, ticket }) => ({
+    url: `/tickets/user/${userId}/${customerId}`,
+    method: 'POST',
+    body: ticket,
+  }),
+  
+}),
+getUserTickets: builder.query({
+  query: ({ userId, customerId }) => `/tickets/user/${userId}/customer/${customerId}`,
+  providesTags: ['Tickets'],
+}),
+
+deleteTicket: builder.mutation({
+  query: ({ userId, ticketId }) => ({
+    url: `/tickets/user/${userId}/ticket/${ticketId}`,
+    method: 'DELETE',
+  }),
+}),
+
   }),
 });
 
-export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation, useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useGetVehicleSpeedQuery, useGetVehicleIgnitionQuery, useGetGpsBySerialQuery, useGetAlertsBySerialQuery } = authApi;
+export const { useLoginMutation, useGetUserByIdQuery, useEnable2FAMutation, 
+  useDisable2FAMutation, useVerify2FAMutation, useForgotPasswordMutation, useResetPasswordMutation, 
+  useGetCustomerByUserIdQuery, useGetCustomerVehiclesQuery, useGetVehicleSpeedQuery, 
+  useGetVehicleIgnitionQuery, useGetGpsBySerialQuery, useGetAlertsBySerialQuery,
+useCreateTicketMutation, useGetUserTicketsQuery, useDeleteTicketMutation } = authApi;

@@ -1,5 +1,15 @@
+import { useDeleteTicketMutation, useGetUserTicketsQuery } from '@/store/api/authApi';
+
+import { RootState } from '@/store/store';
+
+import { Alert } from 'react-native';
+
+
 import React, { useState } from 'react';
 import { FlatList, Pressable, SafeAreaView, Text, View } from 'react-native';
+import { useSelector } from 'react-redux';
+
+
 
 interface Ticket {
   id: string;
@@ -45,24 +55,67 @@ const generateMockTickets = (): Ticket[] => {
   return tickets;
 };
 
-export default function ViewTickets() {
-  const [filter, setFilter] = useState<'all' | 'resolved' | 'unresolved'>('all');
-  const [tickets, setTickets] = useState<Ticket[]>(generateMockTickets());
 
-  const filteredTickets = tickets.filter(ticket => {
-    if (filter === 'all') return true;
-    return ticket.status === filter;
-  });
+
+
+export default function ViewTickets() {
+  const [deleteTicket] = useDeleteTicketMutation();
+   const [filter, setFilter] = useState<'all' | 'resolved' | 'unresolved'>('all');
+  const { user, customer } = useSelector((state: RootState) => state.user);
+ const { data: tickets, isLoading, error, refetch } = useGetUserTicketsQuery({
+  userId: user?.id,
+  customerId: customer?.user?.id
+}, {
+  refetchOnMountOrArgChange: true
+});
+
+
+const filteredTickets = (tickets?.tickets || tickets || []).filter(ticket => {
+  if (filter === 'all') return true;
+  if (filter === 'unresolved') return ticket.status === 'unresolved' || ticket.status === 'pending';
+  return ticket.status === filter;
+});
+//console.log('Tickets data:', tickets);
+
+
+const handleDeleteTicket = async (ticketId: string) => {
+  try {
+    console.log('Deleting ticket with ID:', ticketId);
+    console.log('User ID:', user?.id);
+    await deleteTicket({ userId: user?.id, ticketId }).unwrap();
+    Alert.alert('Success', 'Ticket deleted successfully');
+    refetch(); // Refetch the tickets list
+  } catch (error) {
+    Alert.alert('Failed to delete ticket', error?.message || 'An unknown error occurred');
+  }
+};
+
 
   const renderTicket = ({ item }: { item: Ticket }) => (
-    <View className="bg-gray-100 rounded-lg p-4 mb-4">
-      <Text className="text-lg font-semibold">{item.title}</Text>
-      <Text className="text-sm text-gray-600">Type: {item.type}</Text>
-      <Text className="text-sm text-gray-600">Status: {item.status}</Text>
-      <Text className="text-sm text-gray-600">Created: {item.createdAt}</Text>
-      <Text className="mt-2">{item.description}</Text>
+  <View className="bg-gray-100 rounded-lg p-4 mb-4">
+    <View className="flex-row justify-between items-start">
+      <View className="flex-1">
+        <View className="flex-row items-center mb-2">
+          {item.status === 'resolved' && <Text className="text-green-500 mr-2">✓</Text>}
+          {item.status === 'unresolved' && <Text className="text-red-500 mr-2">✗</Text>}
+          {item.status === 'pending' && <Text className="text-yellow-500 mr-2">⏱</Text>}
+          <Text className="text-lg font-semibold">{item.title}</Text>
+        </View>
+        <Text className="text-sm text-gray-600">Type: {item.type}</Text>
+        <Text className="text-sm text-gray-600">Status: {item.status}</Text>
+        <Text className="text-sm text-gray-600">Created: {item.createdat}</Text>
+        <Text className="text-sm text-gray-600">Customer: {item.first_name} {item.last_name}</Text>
+        <Text className="mt-2">{item.description}</Text>
+      </View>
+      <Pressable 
+        onPress={() => handleDeleteTicket(item.id)}
+        className="p-2"
+      >
+        <Text className="text-red-500">🗑</Text>
+      </Pressable>
     </View>
-  );
+  </View>
+);
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -87,13 +140,18 @@ export default function ViewTickets() {
             <Text className={filter === 'unresolved' ? 'text-white' : 'text-black'}>Unresolved</Text>
           </Pressable>
         </View>
-
-        <FlatList
-          data={filteredTickets}
-          keyExtractor={(item) => item.id}
-          renderItem={renderTicket}
-          ListEmptyComponent={<Text className="text-center text-gray-500">No tickets found.</Text>}
-        />
+{isLoading ? (
+  <Text className="text-center text-gray-500">Loading tickets...</Text>
+) : error ? (
+  <Text className="text-center text-red-500">Error loading tickets. Please try again.</Text>
+) : (
+  <FlatList
+    data={filteredTickets}
+    keyExtractor={(item) => item.id}
+    renderItem={renderTicket}
+    ListEmptyComponent={<Text className="text-center text-gray-500">No tickets found.</Text>}
+  />
+)}
       </View>
     </SafeAreaView>
   );

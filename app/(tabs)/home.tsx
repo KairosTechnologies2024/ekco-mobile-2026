@@ -1,3 +1,4 @@
+import { useGetAlertsBySerialQuery, useGetGpsBySerialQuery, useGetVehicleIgnitionQuery, useGetVehicleSpeedQuery } from '@/store/api/authApi';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -5,10 +6,23 @@ import { Alert, Animated, Image, Pressable, ScrollView, Text, TextInput, Touchab
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
-import WebSocketService from '../../services/WebSocketService'; // Remove the { } - it's a default export
+import WebSocketService from '../../services/WebSocketService';
 import { RootState } from '../../store/store';
 
+
+// Helper function for pin colors
+const getPinColor = (speed: number) => {
+  if (speed === 0) return '#ef4444'; // Red for parked
+  if (speed < 30) return '#f59e0b'; // Amber for slow
+  if (speed < 60) return '#3b82f6'; // Blue for normal
+  return '#10b981'; // Green for fast
+};
+
 export default function Home() {
+
+
+
+
   const router = useRouter();
   const dispatch = useDispatch();
   const customer = useSelector((state: RootState) => state.user.customer);
@@ -30,35 +44,51 @@ export default function Home() {
   const [lastScrollY, setLastScrollY] = useState(0);
   const [isScrolling, setIsScrolling] = useState(false);
 
+const [mapRegion, setMapRegion] = useState({
+  latitude: -26.2041,
+  longitude: 28.0473,
+  latitudeDelta: 0.1,
+  longitudeDelta: 0.1,
+});
+
+const [lastKnownCoords, setLastKnownCoords] = useState<{
+  latitude: number;
+  longitude: number;
+} | null>(null);
+
+
   // Slider data and state
   const sliderData = [
-    {
-      id: 1,
-      title: "Effortlessly keep track of\nall your vehicles",
-      backgroundColor: '#000'
-    },
-    {
-      id: 2,
-      title: "Monitor your fleet in\nreal-time",
-      backgroundColor: '#182f51'
-    },
-    {
-      id: 3,
-      title: "Stay connected with your\nvehicles 24/7",
-      backgroundColor: '#DC2626'
-    },
-    {
-      id: 4,
-      title: "Track location, status, and\nperformance",
-      backgroundColor: '#7C3AED'
-    }
-  ];
+  {
+    id: 1,
+    title: "Effortlessly keep track of\nall your vehicles",
+    backgroundColor: '#000',
+    icon: 'location-outline' // Location pin icon
+  },
+  {
+    id: 2,
+    title: "Monitor your fleet in\nreal-time",
+    backgroundColor: '#182f51',
+    icon: 'time-outline' // Clock icon for real-time
+  },
+  {
+    id: 3,
+    title: "Stay connected with your\nvehicles 24/7",
+    backgroundColor: '#DC2626',
+    icon: 'wifi-outline' // WiFi/network icon for connectivity
+  },
+  {
+    id: 4,
+    title: "Track location, status, and\nperformance",
+    backgroundColor: '#7C3AED',
+    icon: 'speedometer-outline' // Speed/performance icon
+  }
+];
 
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const toggleDropdown = () => {
     if (dropdownVisible) {
-      // Animate dropdown closing
       Animated.timing(dropdownAnim, {
         toValue: 0,
         duration: 300,
@@ -67,7 +97,6 @@ export default function Home() {
         setDropdownVisible(false);
       });
     } else {
-      // Show dropdown and animate opening
       setDropdownVisible(true);
       Animated.timing(dropdownAnim, {
         toValue: 1,
@@ -87,41 +116,31 @@ export default function Home() {
 
   const handleVehicleScroll = (event: any) => {
     const currentScrollY = event.nativeEvent.contentOffset.y;
-
-    // Detect if scrolling up or down
-    if (Math.abs(currentScrollY - lastScrollY) > 10) { // Minimum threshold to avoid accidental triggers
+    if (Math.abs(currentScrollY - lastScrollY) > 10) {
       if (!isScrolling) {
         setIsScrolling(true);
-        // Trigger full screen mode when scrolling starts
         setVehiclesFullScreen(true);
-
-        // Reset scrolling state after a short delay
         setTimeout(() => {
           setIsScrolling(false);
         }, 500);
       }
     }
-
     setLastScrollY(currentScrollY);
   };
 
-  // Auto-slide functionality
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentSlide((prevSlide) => (prevSlide + 1) % sliderData.length);
-    }, 3000); // Change slide every 3 seconds
-
+    }, 3000);
     return () => clearInterval(interval);
   }, [sliderData.length]);
 
-  // Show device health modal on first visit, but not if dismissed
   useEffect(() => {
     if (!modalDismissedRef.current) {
       setDeviceHealthModal(true);
     }
-  }); // No dependency array means this runs on every mount and update
+  });
 
-  // Reset dismissed state when component unmounts (user navigates away)
   useEffect(() => {
     return () => {
       modalDismissedRef.current = false;
@@ -129,20 +148,45 @@ export default function Home() {
   }, []);
 
   const dummyVehicles = [
-    { id: 1, name: 'Toyota Camry', location: 'Downtown', status: 'Moving' },
-    { id: 2, name: 'Honda Civic', location: 'Suburb', status: 'Parked' },
-    { id: 3, name: 'Ford Mustang', location: 'Highway', status: 'Moving' },
-    { id: 4, name: 'Chevrolet Malibu', location: 'Airport', status: 'Parked' },
-    { id: 5, name: 'Nissan Altima', location: 'Mall', status: 'Moving' },
-    { id: 6, name: 'BMW 3 Series', location: 'Downtown', status: 'Parked' },
-    { id: 7, name: 'Audi A4', location: 'Suburb', status: 'Moving' },
-    { id: 8, name: 'Mercedes C-Class', location: 'Highway', status: 'Parked' },
-    { id: 9, name: 'Volkswagen Passat', location: 'Airport', status: 'Moving' },
-    { id: 10, name: 'Hyundai Sonata', location: 'Mall', status: 'Parked' },
+    { id: 1, name: 'Toyota Camry', serial: 'CAM001', location: 'Downtown', status: 'Moving' },
+    { id: 2, name: 'Honda Civic', serial: 'CIV001', location: 'Suburb', status: 'Parked' },
+    { id: 3, name: 'Ford Mustang', serial: 'MUS001', location: 'Highway', status: 'Moving' },
+    { id: 4, name: 'Chevrolet Malibu', serial: 'MAL001', location: 'Airport', status: 'Parked' },
+    { id: 5, name: 'Nissan Altima', serial: 'ALT001', location: 'Mall', status: 'Moving' },
+    { id: 6, name: 'BMW 3 Series', serial: 'BMW001', location: 'Downtown', status: 'Parked' },
+    { id: 7, name: 'Audi A4', serial: 'AUD001', location: 'Suburb', status: 'Moving' },
+    { id: 8, name: 'Mercedes C-Class', serial: 'MER001', location: 'Highway', status: 'Parked' },
+    { id: 9, name: 'Volkswagen Passat', serial: 'VOL001', location: 'Airport', status: 'Moving' },
+    { id: 10, name: 'Hyundai Sonata', serial: 'HYU001', location: 'Mall', status: 'Parked' },
   ];
 
   const displayVehicles = (vehicles && Array.isArray(vehicles) && vehicles.length > 0) ? vehicles : dummyVehicles;
   const isSingleVehicle = displayVehicles.length === 1;
+
+  // For each vehicle, fetch its data
+  const vehicleQueries = displayVehicles.map(vehicle => ({
+    speed: useGetVehicleSpeedQuery(
+      (vehicle as any).serial || '',
+      { 
+        skip: !(vehicle as any).serial,
+        pollingInterval: 5000
+      }
+    ),
+    ignition: useGetVehicleIgnitionQuery(
+      (vehicle as any).serial || '',
+      { 
+        skip: !(vehicle as any).serial,
+        pollingInterval: 5000
+      }
+    ),
+    gps: useGetGpsBySerialQuery(
+      (vehicle as any).serial || '',
+      { 
+        skip: !(vehicle as any).serial,
+        pollingInterval: 5000
+      }
+    )
+  }));
 
   const dummyCoords = [
     { latitude: -26.2041, longitude: 28.0473 },
@@ -150,35 +194,74 @@ export default function Home() {
     { latitude: -26.2841, longitude: 28.1273 },
   ];
 
-  // WebSocket connection - USE ONLY THE CENTRALIZED SERVICE
   useEffect(() => {
     const wsService = WebSocketService.getInstance();
     wsService.connect();
+  }, []);
 
-    // No need to return a cleanup function unless you want to manage connection lifecycle
-    // The service handles reconnection automatically
-  }, []); // Empty dependency array - only run once
 
+
+useEffect(() => {
+  if (displayVehicles.length > 0) {
+    const vehicle = displayVehicles[0];
+    const queryIndex = displayVehicles.indexOf(vehicle);
+    const queries = vehicleQueries[queryIndex];
+    
+    const hasLat = queries.gps.data?.gps_data?.[0]?.latitude !== null && queries.gps.data?.gps_data?.[0]?.latitude !== undefined;
+    const hasLon = queries.gps.data?.gps_data?.[0]?.longitude !== null && queries.gps.data?.gps_data?.[0]?.longitude !== undefined;
+    
+    if (hasLat && hasLon) {
+      const newLat = Number(queries.gps.data?.gps_data?.[0]?.latitude);
+      const newLon = Number(queries.gps.data?.gps_data?.[0]?.longitude);
+      
+      // Only update if coordinates have actually changed
+      if (!lastKnownCoords || 
+          lastKnownCoords.latitude !== newLat || 
+          lastKnownCoords.longitude !== newLon) {
+        
+        setLastKnownCoords({ latitude: newLat, longitude: newLon });
+        setMapRegion(prev => ({
+          ...prev,
+          latitude: newLat,
+          longitude: newLon,
+        }));
+      }
+    }
+  }
+}, [displayVehicles[0]?.id, vehicleQueries[0]?.gps.data?.gps_data?.[0]]);
+const alertsQueries = displayVehicles.map(vehicle => 
+  useGetAlertsBySerialQuery((vehicle as any).serial, {
+    skip: !(vehicle as any).serial,
+    pollingInterval: 30000,
+  })
+);
+
+const criticalCount = alertsQueries.reduce((total, query) => {
+  const alerts = query.data?.alerts ?? [];
+  const criticalAlerts = alerts.filter((alert: any) => {
+    const lcTitle = (alert.alert ?? '').toLowerCase();
+    return lcTitle.endsWith('detected') || lcTitle.endsWith('disconnected') || 
+           lcTitle.includes('disconnected') || lcTitle.includes('smash') || 
+           lcTitle.includes('jamming');
+  });
+  return total + criticalAlerts.length;
+}, 0);
   return (
     <SafeAreaView className="flex-1 px-4">
       <View className="flex-row justify-between items-center px-4 py-4">
-        {/* Left Side - Greeting */}
         <Text className="text-3xl font-bold">
           {getGreeting()}, {'\n'}{customer?.user?.first_name || 'User'} 😁
         </Text>
 
-        {/* Right Side - Profile Pic and Notification Bell */}
         <View className="flex-row items-center">
-          {/* Notification Bell with Badge */}
-          <Pressable onPress={() => router.push('/alerts')} className="relative mr-4">
-            <Ionicons name="notifications-outline" size={32} color="black" />
-            {/* Unread Badge - will be updated to show critical alerts count */}
-            <View className="absolute top-0 right-0 bg-red-500 rounded-full w-4 h-4 items-center justify-center">
-              <Text className="text-white text-xs">0</Text>
-            </View>
-          </Pressable>
-
-          {/* Profile Pic */}
+     <Pressable onPress={() => router.push('/alerts')} className="relative mr-4">
+  <Ionicons name="notifications-outline" size={32} color="black" />
+  {criticalCount > 0 && (
+    <View className="absolute top-0 right-0 bg-red-500 rounded-full px-1.5 py-0.5 items-center justify-center">
+      <Text className="text-white text-xs font-bold">{criticalCount > 99 ? '99+' : criticalCount}</Text>
+    </View>
+  )}
+</Pressable>
           <Pressable onPress={toggleDropdown} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <Image
               source={require('../../assets/images/user.png')}
@@ -190,7 +273,6 @@ export default function Home() {
 
       <TouchableWithoutFeedback onPress={() => {
         if (dropdownVisible) {
-          // Animate dropdown closing on outside press
           Animated.timing(dropdownAnim, {
             toValue: 0,
             duration: 300,
@@ -201,80 +283,106 @@ export default function Home() {
         }
       }}>
         <View className="flex-1">
-          <View
-            className='h-32 w-full rounded-2xl px-6 py-6 flex justify-center mt-4'
-            style={{ backgroundColor: sliderData[currentSlide].backgroundColor }}
-          >
-           
-              <Text className='text-white text-xl font-bold'>
-                {sliderData[currentSlide].title}
-              </Text>
-          
-          </View>
-
+        <View
+  className='h-32 w-full rounded-2xl px-6 py-6 flex-row items-center mt-4'
+  style={{ backgroundColor: sliderData[currentSlide].backgroundColor }}
+>
+  <View className="flex-1">
+    <Text className='text-white text-xl font-bold'>
+      {sliderData[currentSlide].title}
+    </Text>
+  </View>
+  <View className="items-center justify-center ml-4">
+    <Ionicons 
+      name={sliderData[currentSlide].icon}
+      size={40} 
+      color="rgba(255,255,255,0.8)"
+    />
+  </View>
+</View>
           {!isSingleVehicle && (
-            <View className="mt-4 ">
+            <View className="mt-4">
               <View className="flex-row items-center bg-white rounded-full px-4 border border-gray-400">
-
                 <TextInput
                   placeholder="search vehicle"
-                  className="flex-1 ml-2 "
+                  className="flex-1 ml-2"
                 />
-                  <Ionicons name="search" size={20} color="gray" />
+                <Ionicons name="search" size={20} color="gray" />
               </View>
             </View>
           )}
 
           <Text className="text-xl font-bold mt-4 px-4">Your Vehicle(s) Current Position</Text>
 
-          <MapView
-            style={mapFullScreen ? { flex: 1 } : isSingleVehicle ? { flex: 1, marginHorizontal: 16, marginTop: 8, borderRadius: 8 } : { height: 192, marginHorizontal: 16, marginTop: 8, borderRadius: 8 }}
-            initialRegion={{
-              latitude: -26.2041,
-              longitude: 28.0473,
-              latitudeDelta: 0.1,
-              longitudeDelta: 0.1,
-            }}
-            onPress={toggleMapFullScreen}
-          >
+    <MapView
+  style={mapFullScreen ? { flex: 1 } : isSingleVehicle ? { flex: 1, marginHorizontal: 16, marginTop: 8, borderRadius: 8 } : { height: 192, marginHorizontal: 16, marginTop: 8, borderRadius: 8 }}
+  region={mapRegion}
+  onRegionChangeComplete={(region) => {
+    // Only update if user manually moved the map
+    if (!lastKnownCoords || 
+        Math.abs(region.latitude - lastKnownCoords.latitude) > 0.001 ||
+        Math.abs(region.longitude - lastKnownCoords.longitude) > 0.001) {
+      setMapRegion(region);
+    }
+  }}
+  followsUserLocation={isSingleVehicle}
+  showsUserLocation={isSingleVehicle}
+  onPress={toggleMapFullScreen}
+>
+
             {displayVehicles.slice(0,3).map((vehicle, index) => {
-              const pinColors = ['red', 'blue', 'green'];
-              const color = pinColors[index % 3];
-              const hasLat = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
-              const hasLon = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
+              const queryIndex = displayVehicles.indexOf(vehicle);
+              const queries = vehicleQueries[queryIndex];
+              
+              const speed = queries.speed.data?.speed_data?.[0]?.speed ?? (vehicle as any)?.latestSpeed ?? 0;
+              const ignition = queries.ignition.data?.ignition_data?.[0]?.ignition_status ?? (vehicle as any)?.ignitionStatus ?? 'Off';
+              const status = speed > 0 ? 'Moving' : 'Parked';
+              
+              const hasLat = queries.gps.data?.gps_data?.[0]?.latitude !== null && queries.gps.data?.gps_data?.[0]?.latitude !== undefined;
+              const hasLon = queries.gps.data?.gps_data?.[0]?.longitude !== null && queries.gps.data?.gps_data?.[0]?.longitude !== undefined;
               const coords = hasLat && hasLon
-                ? { latitude: Number((vehicle as any).latitude), longitude: Number((vehicle as any).longitude) }
+                ? { 
+                    latitude: Number(queries.gps.data?.gps_data?.[0]?.latitude), 
+                    longitude: Number(queries.gps.data?.gps_data?.[0]?.longitude)
+                  }
                 : dummyCoords[index % dummyCoords.length];
-              const status = ((vehicle as any).latestSpeed ?? 0) > 0 ? 'Moving' : 'Parked';
+              
               return (
                 <Marker
                   key={vehicle.id}
                   coordinate={coords}
                   title={vehicle.name}
-                  description={status}
-                  pinColor={color}
+                  description={`${status} - ${speed} km/h`}
+                  pinColor={getPinColor(speed)}
                 />
               );
             })}
           </MapView>
 
-          <Pressable onPress={toggleVehiclesFullScreen} style={vehiclesFullScreen ? { flex: 1 } : isSingleVehicle ? {} : { maxHeight: 300 }}>
-            <ScrollView
-              className="mt-4"
-              style={vehiclesFullScreen ? { flex: 1 } : isSingleVehicle ? { height: 120 } : { maxHeight: 300 }}
-              onScroll={handleVehicleScroll}
-              scrollEventThrottle={16}
-            >
-              {displayVehicles.map((vehicle, index) => {
-                const pinColors = ['red', 'blue', 'green'];
-                const color = pinColors[index % 3];
-                // compute a location display: prefer vehicle.location unless it's the placeholder 'Unknown',
-                // otherwise show last known coordinates (latitude, longitude) if available
-                const hasLat = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
-                const hasLon = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
-                const coordText = hasLat && hasLon ? `${Number((vehicle as any).latitude).toFixed(5)}, ${Number((vehicle as any).longitude).toFixed(5)}` : null;
-                const locText = vehicle.location && vehicle.location !== 'Unknown' ? vehicle.location : (coordText ?? 'Unknown');
-                const status = ((vehicle as any).latestSpeed ?? 0) > 0 ? 'Moving' : 'Parked';
+        <Pressable onPress={() => isSingleVehicle ? {} : toggleVehiclesFullScreen()} style={vehiclesFullScreen ? { flex: 1 } : isSingleVehicle ? {} : { maxHeight: 300 }}>
+       <ScrollView
+  className="mt-4"
+  style={vehiclesFullScreen ? { flex: 1 } : isSingleVehicle ? { height: 'auto' } : { maxHeight: 300 }}
+  scrollEnabled={!isSingleVehicle}
+  onScroll={handleVehicleScroll}
+  scrollEventThrottle={16}
+>
+              {displayVehicles.map((vehicle) => {
+                const queryIndex = displayVehicles.indexOf(vehicle);
+                const queries = vehicleQueries[queryIndex];
+                
+                const speed = queries.speed.data?.speed_data?.[0]?.speed ?? (vehicle as any)?.latestSpeed ?? 0;
+                const ignition = queries.ignition.data?.ignition_data?.[0]?.ignition_status ?? (vehicle as any)?.ignitionStatus ?? 'Off';
+                const status = speed > 0 ? 'Moving' : 'Parked';
+                
+                const hasLat = queries.gps.data?.gps_data?.[0]?.latitude !== null && queries.gps.data?.gps_data?.[0]?.latitude !== undefined;
+                const hasLon = queries.gps.data?.gps_data?.[0]?.longitude !== null && queries.gps.data?.gps_data?.[0]?.longitude !== undefined;
+                const coordText = hasLat && hasLon 
+                  ? `${Number(queries.gps.data?.gps_data?.[0]?.latitude).toFixed(5)}, ${Number(queries.gps.data?.gps_data?.[0]?.longitude).toFixed(5)}`
+                  : null;
+                const locText = vehicle.location && vehicle.location !== 'Unknown' 
+                  ? vehicle.location 
+                  : (coordText ?? 'Unknown');
 
                 return (
                   <Pressable
@@ -287,8 +395,19 @@ export default function Home() {
                     }}
                     className="bg-white rounded-lg p-4 m-2 shadow-md flex-row items-center"
                   >
-                    <Ionicons name="car" size={40} color={color} />
-                    <View className="ml-4">
+                    <View className="flex-row items-center">
+    <Ionicons 
+    name={'car'} 
+    size={40} 
+    color={getPinColor(speed)} 
+  />
+                      <View className="ml-2">
+                        {/*  <Text className="text-xs font-bold" style={{ color: getPinColor(speed) }}>
+                          {speed} km/h
+                        </Text>  */}
+                      </View>
+                    </View>
+                    <View className="ml-4 flex-1">
                       <Text className="text-lg font-bold">{vehicle.name}</Text>
                       <Text className="text-gray-600">{locText}</Text>
                       <Text className="text-gray-600">{status}</Text>
@@ -321,27 +440,34 @@ export default function Home() {
             }}
           >
             {displayVehicles.slice(0,3).map((vehicle, index) => {
-              const pinColors = ['red', 'blue', 'green'];
-              const color = pinColors[index % 3];
-              const hasLat2 = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
-              const hasLon2 = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
-              const coords = hasLat2 && hasLon2
-                ? { latitude: Number((vehicle as any).latitude), longitude: Number((vehicle as any).longitude) }
+              const queryIndex = displayVehicles.indexOf(vehicle);
+              const queries = vehicleQueries[queryIndex];
+              
+              const speed = queries.speed.data?.speed_data?.[0]?.speed ?? (vehicle as any)?.latestSpeed ?? 0;
+              const ignition = queries.ignition.data?.ignition_data?.[0]?.ignition_status ?? (vehicle as any)?.ignitionStatus ?? 'Off';
+              const status = speed > 0 ? 'Moving' : 'Parked';
+              
+              const hasLat = queries.gps.data?.gps_data?.[0]?.latitude !== null && queries.gps.data?.gps_data?.[0]?.latitude !== undefined;
+              const hasLon = queries.gps.data?.gps_data?.[0]?.longitude !== null && queries.gps.data?.gps_data?.[0]?.longitude !== undefined;
+              const coords = hasLat && hasLon
+                ? { 
+                    latitude: Number(queries.gps.data?.gps_data?.[0]?.latitude), 
+                    longitude: Number(queries.gps.data?.gps_data?.[0]?.longitude)
+                  }
                 : dummyCoords[index % dummyCoords.length];
-              const status = ((vehicle as any).latestSpeed ?? 0) > 0 ? 'Moving' : 'Parked';
+              
               return (
                 <Marker
                   key={vehicle.id}
                   coordinate={coords}
                   title={vehicle.name}
-                  description={status}
-                  pinColor={color}
+                  description={`${status} - ${speed} km/h`}
+                  pinColor={getPinColor(speed)}
                 />
               );
             })}
           </MapView>
 
-          {/* Close button */}
           <Pressable
             onPress={toggleMapFullScreen}
             style={{
@@ -391,14 +517,22 @@ export default function Home() {
             </View>
 
             <ScrollView className="flex-1 px-4">
-              {displayVehicles.map((vehicle, index) => {
-                const pinColors = ['red', 'blue', 'green'];
-                const color = pinColors[index % 3];
-                const hasLat2 = (vehicle as any).latitude !== null && (vehicle as any).latitude !== undefined;
-                const hasLon2 = (vehicle as any).longitude !== null && (vehicle as any).longitude !== undefined;
-                const coordText2 = hasLat2 && hasLon2 ? `${Number((vehicle as any).latitude).toFixed(5)}, ${Number((vehicle as any).longitude).toFixed(5)}` : null;
-                const locText2 = vehicle.location && vehicle.location !== 'Unknown' ? vehicle.location : (coordText2 ?? 'Unknown');
-              const status = ((vehicle as any)?.latestSpeed ?? 0) > 0 ? 'Moving' : 'Parked';
+              {displayVehicles.map((vehicle) => {
+                const queryIndex = displayVehicles.indexOf(vehicle);
+                const queries = vehicleQueries[queryIndex];
+                
+                const speed = queries.speed.data?.speed_data?.[0]?.speed ?? (vehicle as any)?.latestSpeed ?? 0;
+                const ignition = queries.ignition.data?.ignition_data?.[0]?.ignition_status ?? (vehicle as any)?.ignitionStatus ?? 'Off';
+                const status = speed > 0 ? 'Moving' : 'Parked';
+                
+                const hasLat = queries.gps.data?.gps_data?.[0]?.latitude !== null && queries.gps.data?.gps_data?.[0]?.latitude !== undefined;
+                const hasLon = queries.gps.data?.gps_data?.[0]?.longitude !== null && queries.gps.data?.gps_data?.[0]?.longitude !== undefined;
+                const coordText = hasLat && hasLon 
+                  ? `${Number(queries.gps.data?.gps_data?.[0]?.latitude).toFixed(5)}, ${Number(queries.gps.data?.gps_data?.[0]?.longitude).toFixed(5)}`
+                  : null;
+                const locText = vehicle.location && vehicle.location !== 'Unknown' 
+                  ? vehicle.location 
+                  : (coordText ?? 'Unknown');
 
                 return (
                   <Pressable
@@ -411,10 +545,16 @@ export default function Home() {
                     }}
                     className="bg-white rounded-lg p-4 m-2 shadow-md flex-row items-center"
                   >
-                    <Ionicons name="car" size={40} color={color} />
+                  <View className="flex-row items-center">
+  <Ionicons 
+    name={'car'} 
+    size={40} 
+    color={getPinColor(speed)} 
+  />
+</View>
                     <View className="ml-4 flex-1">
                       <Text className="text-lg font-bold">{vehicle.name}</Text>
-                      <Text className="text-gray-600">{locText2}</Text>
+                      <Text className="text-gray-600">{locText}</Text>
                       <Text className="text-gray-600">{status}</Text>
                     </View>
                   </Pressable>
@@ -429,7 +569,6 @@ export default function Home() {
         <>
           <Pressable
             onPress={() => {
-              // Animate dropdown closing on outside press
               Animated.timing(dropdownAnim, {
                 toValue: 0,
                 duration: 300,
@@ -484,7 +623,6 @@ export default function Home() {
 
       {deviceHealthModal && (
         <>
-          {/* Backdrop */}
           <Pressable
             onPress={() => setDeviceHealthModal(false)}
             style={{
@@ -498,7 +636,6 @@ export default function Home() {
             }}
           />
 
-          {/* Modal */}
           <View
             style={{
               position: 'absolute',
@@ -527,7 +664,6 @@ export default function Home() {
                 elevation: 10,
               }}
             >
-              {/* Warning Icon */}
               <View className="items-center mb-4">
                 <View className="bg-red-100 rounded-full p-3 mb-2">
                   <Ionicons name="warning" size={32} color="#DC2626" />
@@ -537,12 +673,10 @@ export default function Home() {
                 </Text>
               </View>
 
-              {/* Alert Message */}
               <Text className="text-gray-700 text-center mb-6 leading-5">
                 One of your devices linked to your Toyota Camry has stopped responding and may need attention. Please check the device health status.
               </Text>
 
-              {/* Buttons */}
               <View className="flex-row justify-between gap-3">
                 <Pressable
                   onPress={() => {

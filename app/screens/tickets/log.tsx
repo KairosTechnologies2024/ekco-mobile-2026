@@ -1,6 +1,8 @@
+import { useCreateTicketMutation } from '@/store/api/authApi';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React, { useState } from 'react';
 import { Alert, Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from 'react-native';
+import { useDispatch, useSelector } from 'react-redux';
 import TicketTypeModal from '../../../components/TicketTypeModal';
 
 interface Ticket {
@@ -28,28 +30,39 @@ const ticketTypes = [
 ];
 
 export default function LogTicket() {
+
+
+  const dispatch = useDispatch();
+const { user, customer } = useSelector((state: RootState) => state.user);
+const [createTicket, { isLoading }] = useCreateTicketMutation();
   const [title, setTitle] = useState('');
   const [type, setType] = useState(ticketTypes[0]);
   const [description, setDescription] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
 
-  const handleSubmit = () => {
-    if (!title.trim() || !description.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
+  const handleSubmit = async () => {
+  if (!title.trim() || !description.trim()) {
+    Alert.alert('Error', 'Please fill in all fields');
+    return;
+  }
 
-    const newTicket: Omit<Ticket, 'id' | 'status' | 'createdAt' | 'updatedAt'> = {
+  try {
+    const newTicket = {
       title: title.trim(),
       type,
       description: description.trim(),
-      customerName: 'Nhlamulo',
-      customerEmail: 'nhlamulo@email.com',
-      customerPhone: '123-456-7890',
-      loggedBy: 'Nhlamulo Mobile App'
+      status: "unresolved",
+      customerName: `${customer?.user?.first_name} ${customer?.user?.last_name}` ,
+      customerEmail: customer?.user?.email ,
+      customerPhone: customer?.user?.phone_number ,
+      loggedBy: `${customer?.user?.first_name} ${customer?.user?.last_name}`
     };
 
-    console.log('Submitting ticket:', newTicket);
+    await createTicket({
+      userId: user?.id,
+      customerId: customer?.user?.id,
+      ticket: newTicket
+    }).unwrap();
 
     Alert.alert('Success', 'Your support ticket has been logged successfully!', [
       { text: 'OK', onPress: () => {
@@ -58,7 +71,11 @@ export default function LogTicket() {
         setType(ticketTypes[0]);
       }}
     ]);
-  };
+  } catch (error) {
+    Alert.alert('Error', 'Failed to create ticket. Please try again.');
+  }
+};
+console.log("customer", customer);
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -100,12 +117,15 @@ export default function LogTicket() {
           />
         </View>
 
-        <Pressable
-          onPress={handleSubmit}
-          className="bg-blue-500 py-3 rounded-lg items-center mb-8"
-        >
-          <Text className="text-white font-semibold text-lg">Submit Ticket</Text>
-        </Pressable>
+       <Pressable
+  onPress={handleSubmit}
+  className="bg-blue-500 py-3 rounded-lg items-center mb-8"
+  disabled={isLoading}
+>
+  <Text className="text-white font-semibold text-lg">
+    {isLoading ? 'Submitting...' : 'Submit Ticket'}
+  </Text>
+</Pressable>
 
         <TicketTypeModal
           visible={modalVisible}

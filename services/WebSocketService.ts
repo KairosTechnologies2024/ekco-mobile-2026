@@ -3,6 +3,7 @@ import { authApi } from '../store/api/authApi';
 import { setVehicles } from '../store/slices/userSlice';
 import { store } from '../store/store';
 
+
 class WebSocketService {
   private static instance: WebSocketService;
   private ws: WebSocket | null = null;
@@ -18,7 +19,7 @@ class WebSocketService {
 
   connect() {
     try {
-      this.ws = new WebSocket('ws://192.168.10.37:3003');
+      this.ws = new WebSocket('ws://192.168.10.26:3003');
 
       this.ws.onopen = () => {
         console.log('WebSocket connected');
@@ -46,88 +47,133 @@ class WebSocketService {
     try {
       const data = JSON.parse(event.data);
       
-      // Handle vehicle updates
-      if (data.type === 'vehicle_update' || data.speed !== undefined || data.ignition !== undefined) {
-        this.updateVehicleData(data);
-      }
-      
-      // Handle alert updates
-      if (data.type === 'alert_update' && data.data) {
-        this.handleAlertUpdate(data);
-      }
-      
-      // Handle generic data (fallback)
-      if (!data.type && (data.data || data.speed || data.ignition)) {
-        this.updateVehicleData(data);
+      switch (data.type) {
+        case 'gps_update':
+          this.handleGPSUpdate(data.data);
+          break;
+        case 'speed_update':
+          this.handleSpeedUpdate(data.data);
+          break;
+        case 'engine_update':
+          this.handleEngineUpdate(data.data);
+          break;
+        case 'alert_update':
+          this.handleAlertUpdate(data);
+          break;
+        case 'all_tickets_update':
+          this.handleTicketsUpdate(data.data);
+          break;
+        case 'all_alerts_update':
+          this.handleAllAlertsUpdate(data.data);
+          break;
+        case 'all_risks_update':
+          this.handleRisksUpdate(data.data);
+          break;
+        default:
+          console.log('Unknown message type:', data.type);
       }
     } catch (error) {
       console.log('Error parsing WebSocket message:', error);
     }
   }
 
-  private updateVehicleData(data: any) {
+  private handleGPSUpdate(data: any[]) {
     const state = store.getState();
-    const currentVehicles = state.user.vehicles && Array.isArray(state.user.vehicles) 
-      ? state.user.vehicles.slice() 
-      : [];
-
-    let updated = false;
-
-    const updatedVehicles = currentVehicles.map(vehicle => {
-      const vehicleSerial = (vehicle as any).serial?.toString();
-      
-      // Extract data based on your API structure
-      const payload = data.data || data;
-      let vehicleUpdate = null;
-
-      if (payload.device_serial === vehicleSerial) {
-        vehicleUpdate = {
-          speed: Number(payload.speed ?? payload.s ?? 0),
-          ignition: payload.ignition_status ?? payload.ignition ?? false,
-          latitude: payload.latitude ?? payload.lat,
-          longitude: payload.longitude ?? payload.lng ?? payload.lon
-        };
-      } else if (Array.isArray(payload)) {
-        const match = payload.find((item: any) => item.device_serial === vehicleSerial);
-        if (match) {
-          vehicleUpdate = {
-            speed: Number(match.speed ?? match.s ?? 0),
-            ignition: match.ignition_status ?? match.ignition ?? false,
-            latitude: match.latitude ?? match.lat,
-            longitude: match.longitude ?? match.lng ?? match.lon
-          };
-        }
-      }
-console.log('Received vehicle update:', data);
-console.log('Updated vehicle data:', vehicleUpdate);
-      if (vehicleUpdate) {
-        updated = true;
+    const vehicles = state.user.vehicles || [];
+    
+    const updatedVehicles = vehicles.map(vehicle => {
+      const update = data.find(d => d.device_serial === (vehicle as any).serial);
+      if (update) {
         return {
           ...vehicle,
-          latestSpeed: vehicleUpdate.speed,
-          ignitionStatus: this.normalizeIgnition(vehicleUpdate.ignition),
-          status: vehicleUpdate.speed > 0 ? 'Moving' : 'Parked',
-          ...(vehicleUpdate.latitude && { latitude: vehicleUpdate.latitude }),
-          ...(vehicleUpdate.longitude && { longitude: vehicleUpdate.longitude })
+          latitude: update.latitude,
+          longitude: update.longitude,
+          latestSpeed: update.speed
         };
       }
-
       return vehicle;
     });
+    
+    store.dispatch(setVehicles(updatedVehicles));
+    data.forEach(update => {
+      store.dispatch(authApi.util.invalidateTags([
+        { type: 'GPS', id: update.device_serial }
+      ]));
+    });
+  }
 
-    if (updated) {
-      store.dispatch(setVehicles(updatedVehicles as any));
-    }
+  private handleSpeedUpdate(data: any[]) {
+    const state = store.getState();
+    const vehicles = state.user.vehicles || [];
+    
+    const updatedVehicles = vehicles.map(vehicle => {
+      const update = data.find(d => d.device_serial === (vehicle as any).serial);
+      if (update) {
+        return {
+          ...vehicle,
+          latestSpeed: update.speed,
+          status: update.speed > 0 ? 'Moving' : 'Parked'
+        };
+      }
+      return vehicle;
+    });
+    
+    store.dispatch(setVehicles(updatedVehicles));
+    data.forEach(update => {
+      store.dispatch(authApi.util.invalidateTags([
+        { type: 'Speed', id: update.device_serial }
+      ]));
+    });
+  }
+
+  private handleEngineUpdate(data: any[]) {
+    const state = store.getState();
+    const vehicles = state.user.vehicles || [];
+    
+    const updatedVehicles = vehicles.map(vehicle => {
+      const update = data.find(d => d.device_serial === (vehicle as any).serial);
+      if (update) {
+        return {
+          ...vehicle,
+          ignitionStatus: this.normalizeIgnition(update.ignition_status)
+        };
+      }
+      return vehicle;
+    });
+    
+    store.dispatch(setVehicles(updatedVehicles));
+    data.forEach(update => {
+      store.dispatch(authApi.util.invalidateTags([
+        { type: 'Ignition', id: update.device_serial }
+      ]));
+    });
   }
 
   private handleAlertUpdate(data: any) {
-    const alerts = Array.isArray(data.data) ? data.data : [data.data];
-    alerts.forEach((alert: any) => {
-      if (alert.device_serial) {
-        // Invalidate the cache for this serial to trigger refetch
-        store.dispatch(authApi.util.invalidateTags([{ type: 'Alerts', id: alert.device_serial }]));
-      }
-    });
+    if (data.data && Array.isArray(data.data)) {
+      data.data.forEach((alert: any) => {
+        if (alert.device_serial) {
+          store.dispatch(authApi.util.invalidateTags([
+            { type: 'Alerts', id: alert.device_serial }
+          ]));
+        }
+      });
+    }
+  }
+
+  private handleTicketsUpdate(data: any[]) {
+    // Handle tickets update if needed
+    //console.log('Received tickets update:', data);
+  }
+
+  private handleAllAlertsUpdate(data: any[]) {
+    // Handle all alerts update if needed
+   // console.log('Received all alerts update:', data);
+  }
+
+  private handleRisksUpdate(data: any[]) {
+    // Handle risks update if needed
+    //console.log('Received risks update:', data);
   }
 
   private normalizeIgnition(val: any): string {
@@ -152,14 +198,6 @@ console.log('Updated vehicle data:', vehicleUpdate);
     }
   }
 
-  // Optional: Method to manually send messages if needed
-  sendMessage(message: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    }
-  }
-
-  // Optional: Method to check connection status
   getConnectionStatus(): string {
     if (!this.ws) return 'disconnected';
     switch (this.ws.readyState) {

@@ -2,7 +2,7 @@ import { useGetGpsBySerialQuery, useGetVehicleIgnitionQuery, useGetVehicleSpeedQ
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,8 @@ import { RootState } from '../../../../store/store';
 export default function LocationScreen() {
   const insets = useSafeAreaInsets();
   const { vehicle } = useLocalSearchParams();
+  const [address, setAddress] = useState<string>('');
+  const [routeCoordinates, setRouteCoordinates] = useState<any[]>([]);
   
   let vehicleData;
   try {
@@ -29,62 +31,54 @@ export default function LocationScreen() {
     };
   }
 
-  // Get vehicles from Redux store (this gets updated by the centralized WebSocket)
+  // Get vehicles from Redux store (updated by WebSocket)
   const vehicles = useSelector((state: RootState) => state.user.vehicles);
   const selectedVehicle = vehicles?.find((v: any) => v.id === vehicleData.id);
 
-  // Fetch speed, ignition, and GPS from API using vehicle serial
+  // API queries with reduced polling since we have WebSocket updates
   const { data: speedData } = useGetVehicleSpeedQuery(
-  selectedVehicle?.serial || '',
-  { 
-    skip: !selectedVehicle?.serial,
-    pollingInterval: 1000 // Poll every 5 seconds as backup
-  }
-);
- const { data: ignitionData } = useGetVehicleIgnitionQuery(
-  selectedVehicle?.serial || '',
-  { 
-    skip: !selectedVehicle?.serial,
-    pollingInterval: 1000 // Poll every 5 seconds as backup
-  }
-);
+    selectedVehicle?.serial || '',
+    { 
+      skip: !selectedVehicle?.serial,
+      pollingInterval: 5000 // Poll every 5 seconds as backup
+    }
+  );
+  
+  const { data: ignitionData } = useGetVehicleIgnitionQuery(
+    selectedVehicle?.serial || '',
+    { 
+      skip: !selectedVehicle?.serial,
+      pollingInterval: 5000 // Poll every 5 seconds as backup
+    }
+  );
 
- const { data: gpsData } = useGetGpsBySerialQuery(
-  selectedVehicle?.serial || '',
-  { 
-    skip: !selectedVehicle?.serial,
-    pollingInterval: 1000 // Poll every 5 seconds as backup
-  }
-);
+  const { data: gpsData } = useGetGpsBySerialQuery(
+    selectedVehicle?.serial || '',
+    { 
+      skip: !selectedVehicle?.serial,
+      pollingInterval: 5000 // Poll every 5 seconds as backup
+    }
+  );
 
-  // Log API data for debugging
- 
+  // Update route coordinates when GPS data changes
+  useEffect(() => {
+    const newLat = gpsData?.gps_data?.[0]?.latitude ?? (selectedVehicle as any)?.latitude ?? 37.78825;
+    const newLng = gpsData?.gps_data?.[0]?.longitude ?? (selectedVehicle as any)?.longitude ?? -122.4324;
+    
+    setRouteCoordinates(prev => {
+      const newCoords = [...prev, { latitude: newLat, longitude: newLng }];
+      // Keep only last 10 coordinates for route
+      return newCoords.slice(-10);
+    });
+  }, [gpsData, selectedVehicle?.latitude, selectedVehicle?.longitude]);
 
-  const [address, setAddress] = useState<string>('');
-
-  // Use the latest speed from API data array, fallback to Redux store (updated by WebSocket)
-  const speed = speedData?.speed_data?.[0]?.speed ?? (selectedVehicle as any)?.latestSpeed ?? 0;
-
-  // Use the latest ignition from API data array, fallback to WebSocket
-  const ignition = ignitionData?.ignition_data?.[0]?.ignition_status ?? (selectedVehicle as any)?.ignitionStatus ?? 'Off';
-
-
-  // Log derived values
-  console.log('Derived speed:', speedData);
-  console.log('Derived ignition:', ignitionData);
-
-  // Derive status from speed
+  // Get current values with WebSocket data as primary source
+  const speed = (selectedVehicle as any)?.latestSpeed ?? speedData?.speed_data?.[0]?.speed ?? 0;
+  const ignition = (selectedVehicle as any)?.ignitionStatus ?? ignitionData?.ignition_data?.[0]?.ignition_status ?? 'Off';
   const derivedStatus = speed > 0 ? 'Moving' : 'Parked';
-
-  // Use latest GPS coordinates from API, fallback to Redux store
-  const vehicleLat = gpsData?.gps_data?.[0]?.latitude ?? (selectedVehicle as any)?.latitude ?? 37.78825;
-  const vehicleLng = gpsData?.gps_data?.[0]?.longitude ?? (selectedVehicle as any)?.longitude ?? -122.4324;
-
-  const routeCoordinates = [
-    { latitude: vehicleLat, longitude: vehicleLng },
-    { latitude: vehicleLat + 0.002, longitude: vehicleLng + 0.002 },
-    { latitude: vehicleLat + 0.004, longitude: vehicleLng + 0.004 },
-  ];
+  
+  const vehicleLat = (selectedVehicle as any)?.latitude ?? gpsData?.gps_data?.[0]?.latitude ?? 37.78825;
+  const vehicleLng = (selectedVehicle as any)?.longitude ?? gpsData?.gps_data?.[0]?.longitude ?? -122.4324;
 
   const getAddress = async () => {
     try {
@@ -108,7 +102,7 @@ export default function LocationScreen() {
       Alert.alert('Error', 'Failed to get address');
     }
   };
- console.log('selected vehicle is', selectedVehicle)
+
   return (
     <>
       {/* Map Container */}
@@ -121,34 +115,42 @@ export default function LocationScreen() {
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           }}
+          followsUserLocation
+          showsUserLocation
         >
           <Marker
-            coordinate={{ latitude: vehicleLat, longitude: vehicleLng }}
-            title={selectedVehicle?.name || vehicleData.name}
-            description={derivedStatus}
-          />
-          <Polyline
-            coordinates={routeCoordinates}
-            strokeColor="#000"
-            strokeWidth={3}
-          />
+  coordinate={{ latitude: vehicleLat, longitude: vehicleLng }}
+  title={selectedVehicle?.name || vehicleData.name}
+  description={derivedStatus}
+  pinColor={derivedStatus === 'Moving' ? '#3b82f6' : '#ef4444'} // Blue for moving, red for parked
+/>
+          {routeCoordinates.length > 1 && (
+            <Polyline
+              coordinates={routeCoordinates}
+              strokeColor="#000"
+              strokeWidth={3}
+            />
+          )}
         </MapView>
 
-        {/* Sticker on top of map */}
-        <View className="absolute top-4 left-4 bg-white rounded-lg p-2 shadow-md">
+        {/* Status Badge */}
+        <View className="absolute top-4 left-4 bg-white rounded-lg p-3 shadow-md">
           <Text className="text-sm font-bold">
             {derivedStatus === 'Moving' ? '🚗 Moving' : '🅿️ Parked'}
+          </Text>
+          <Text className="text-xs text-gray-600">
+            {speed} km/h
           </Text>
         </View>
       </View>
 
       {/* Bottom Details */}
-      <View style={{ paddingBottom: insets.bottom }} className="bg-primary-background-color text-white p-4 rounded-t-lg shadow-lg flex-col justify-center">
-        <View className="flex-row items-center mb-4 h-16">
+      <View style={{ paddingBottom: insets.bottom }} className="bg-primary-background-color text-white p-4 rounded-t-lg shadow-lg">
+        <View className="flex-row items-center mb-4">
           <Ionicons name="car" size={40} color="#fff" />
-          <View className="ml-4">
+          <View className="ml-4 flex-1">
             <Text className="text-lg font-bold text-white">{selectedVehicle?.name || vehicleData.name}</Text>
-            <Text className="text-white">
+            <Text className="text-white text-sm">
               {selectedVehicle?.location && selectedVehicle.location !== 'Unknown'
                 ? selectedVehicle.location
                 : (vehicleLat !== 37.78825 && vehicleLng !== -122.4324
@@ -159,8 +161,18 @@ export default function LocationScreen() {
         </View>
 
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-sm text-white">Ignition: {ignition}</Text>
-          <Text className="text-sm text-white">Speed: {speed} km/h</Text>
+          <View className="flex-row items-center">
+            <Ionicons 
+              name={ignition === 'On' ? 'flash' : 'flash-off'} 
+              size={16} 
+              color={ignition === 'On' ? '#10b981' : '#ef4444'} 
+            />
+            <Text className="text-sm text-white ml-2">Ignition: {ignition}</Text>
+          </View>
+          <View className="flex-row items-center">
+            <Ionicons name="speedometer" size={16} color="#fff" />
+            <Text className="text-sm text-white ml-2">Speed: {speed} km/h</Text>
+          </View>
         </View>
 
         <View className="flex-row justify-between items-center mb-6">
@@ -172,11 +184,13 @@ export default function LocationScreen() {
           onPress={getAddress}
           className="bg-accent-color p-3 rounded-lg"
         >
-          <Text className="text-white text-center font-bold mb-2">Get Address</Text>
+          <Text className="text-white text-center font-bold">Get Address</Text>
         </Pressable>
 
         {address ? (
-          <Text className="text-sm mt-2 text-white">{address}</Text>
+          <View className="mt-2 p-2 bg-white/10 rounded-lg">
+            <Text className="text-sm text-white">{address}</Text>
+          </View>
         ) : null}
       </View>
     </>
