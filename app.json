@@ -15,10 +15,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff",
-        "googleServicesFile": "./google-services.json"
+       
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.kts.ekcotrackingmobile2026"
+      "package": "com.kts.ekcotrackingmobile2026",
+       "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
