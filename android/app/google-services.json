@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "220640730641",
+    "project_id": "nhlamulo-test",
+    "storage_bucket": "nhlamulo-test.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:220640730641:android:a2dcff3eebe6653ed85bb0",
+        "android_client_info": {
+          "package_name": "com.ekcoapptest2026.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDo_b929xBBaRPqh2FHzbntwX2wmx9ACmw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

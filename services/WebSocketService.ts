@@ -1,14 +1,21 @@
-// services/WebSocketService.ts
+import messaging from '@react-native-firebase/messaging';
+import { router } from 'expo-router';
+import { Alert } from 'react-native';
 import { authApi } from '../store/api/authApi';
 import { setVehicles } from '../store/slices/userSlice';
 import { store } from '../store/store';
-
-
+import NotificationService from './NotificationServices';
 class WebSocketService {
   private static instance: WebSocketService;
   private ws: WebSocket | null = null;
+  private token: string | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  private reconnectInterval = 3000;
+  private isConnecting = false;
+  private heartbeat: NodeJS.Timeout | null = null;
+
+  private constructor() {}
 
   static getInstance(): WebSocketService {
     if (!WebSocketService.instance) {
@@ -17,29 +24,113 @@ class WebSocketService {
     return WebSocketService.instance;
   }
 
-  connect() {
+  private async setupNotifications() {
+    try {
+      const initialized = await NotificationService.initialize();
+      if (!initialized) {
+        console.error('Failed to initialize notifications');
+        return;
+      }
+
+      // Get FCM token
+      this.token = await messaging().getToken();
+      console.log('FCM Token:', this.token);
+Alert.alert('FCM Token', this.token);
+      // Handle foreground messages
+      messaging().onMessage(async remoteMessage => {
+        await NotificationService.displayAlert(
+          remoteMessage.notification?.title || 'Vehicle Alert',
+          remoteMessage.notification?.body || 'You have a new alert'
+        );
+      });
+
+      // Handle background messages
+      messaging().setBackgroundMessageHandler(async remoteMessage => {
+        await NotificationService.displayAlert(
+          remoteMessage.notification?.title || 'Vehicle Alert',
+          remoteMessage.notification?.body || 'You have a new alert'
+        );
+      });
+
+      // Handle notification press
+      messaging().onNotificationOpenedApp(() => {
+        router.push('/alerts');
+      });
+
+      messaging().getInitialNotification().then(remoteMessage => {
+        if (remoteMessage) {
+          router.push('/alerts');
+        }
+      });
+    } catch (error) {
+      console.error('Error setting up notifications:', error);
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeat = setInterval(() => {
+      if (this.isConnected()) {
+        this.send({ type: 'ping' });
+      }
+    }, 30000);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
+  }
+
+  public async connect() {
+    if (this.ws || this.isConnecting) return;
+    
+    await this.setupNotifications();
+    
+    this.isConnecting = true;
     try {
       this.ws = new WebSocket('ws://192.168.10.26:3003');
-
+      
       this.ws.onopen = () => {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
+        this.isConnecting = false;
+        this.startHeartbeat();
+        
+        // Send FCM token to server
+        if (this.token) {
+          this.send({
+            type: 'token',
+            token: this.token
+          });
+        } else {
+          console.error('Failed to get FCM token');
+        }
       };
 
       this.ws.onmessage = (event) => {
         this.handleMessage(event);
       };
 
-      this.ws.onerror = (error) => {
-        console.log('WebSocket error:', error);
-      };
-
       this.ws.onclose = () => {
         console.log('WebSocket disconnected');
+        this.ws = null;
+        this.isConnecting = false;
+        this.stopHeartbeat();
         this.handleReconnect();
       };
+
+      this.ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        this.isConnecting = false;
+        this.stopHeartbeat();
+      };
+
     } catch (error) {
-      console.log('WebSocket connection error:', error);
+      console.error('WebSocket connection error:', error);
+      this.isConnecting = false;
+      this.handleReconnect();
     }
   }
 
@@ -69,11 +160,14 @@ class WebSocketService {
         case 'all_risks_update':
           this.handleRisksUpdate(data.data);
           break;
+        case 'pong':
+          // Handle pong response if needed
+          break;
         default:
           console.log('Unknown message type:', data.type);
       }
     } catch (error) {
-      console.log('Error parsing WebSocket message:', error);
+      console.error('Error parsing WebSocket message:', error);
     }
   }
 
@@ -156,6 +250,12 @@ class WebSocketService {
           store.dispatch(authApi.util.invalidateTags([
             { type: 'Alerts', id: alert.device_serial }
           ]));
+          
+          // Show notification for new alerts
+          NotificationService.displayAlert(
+            'New Alert',
+            alert.alert || 'You have a new alert'
+          );
         }
       });
     }
@@ -163,17 +263,17 @@ class WebSocketService {
 
   private handleTicketsUpdate(data: any[]) {
     // Handle tickets update if needed
-    //console.log('Received tickets update:', data);
+    console.log('Received tickets update:', data);
   }
 
   private handleAllAlertsUpdate(data: any[]) {
     // Handle all alerts update if needed
-   // console.log('Received all alerts update:', data);
+    console.log('Received all alerts update:', data);
   }
 
   private handleRisksUpdate(data: any[]) {
     // Handle risks update if needed
-    //console.log('Received risks update:', data);
+    console.log('Received risks update:', data);
   }
 
   private normalizeIgnition(val: any): string {
@@ -187,18 +287,38 @@ class WebSocketService {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      setTimeout(() => this.connect(), 3000);
+      setTimeout(() => this.connect(), this.reconnectInterval);
+    } else {
+      console.error('Max reconnection attempts reached');
     }
   }
 
-  disconnect() {
+  public isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  public send(data: any) {
+    if (!this.ws) {
+      console.error('WebSocket not initialized');
+      return;
+    }
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      console.error('WebSocket is not open');
+      return;
+    }
+    this.ws.send(JSON.stringify(data));
+  }
+
+  public disconnect() {
+    this.stopHeartbeat();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
+    this.reconnectAttempts = 0;
   }
 
-  getConnectionStatus(): string {
+  public getConnectionStatus(): string {
     if (!this.ws) return 'disconnected';
     switch (this.ws.readyState) {
       case WebSocket.CONNECTING:

@@ -1,5 +1,4 @@
 import WebSocketService from "@/services/WebSocketService";
-import { store } from "@/store/store";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from 'expo-linking';
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -7,7 +6,6 @@ import React, { useEffect, useState } from "react";
 import { Alert, StyleSheet, TouchableOpacity } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
-import { Provider } from "react-redux";
 import Sidebar from "../components/Sidebar";
 import "../global.css";
 
