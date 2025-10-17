@@ -1,6 +1,3 @@
-import messaging from '@react-native-firebase/messaging';
-import { router } from 'expo-router';
-import { Alert } from 'react-native';
 import { authApi } from '../store/api/authApi';
 import { setVehicles } from '../store/slices/userSlice';
 import { store } from '../store/store';
@@ -24,49 +21,30 @@ class WebSocketService {
     return WebSocketService.instance;
   }
 
-  private async setupNotifications() {
+private async setupNotifications() {
     try {
-      const initialized = await NotificationService.initialize();
-      if (!initialized) {
-        console.error('Failed to initialize notifications');
-        return;
-      }
-
-      // Get FCM token
-      this.token = await messaging().getToken();
-      console.log('FCM Token:', this.token);
-Alert.alert('FCM Token', this.token);
-      // Handle foreground messages
-      messaging().onMessage(async remoteMessage => {
-        await NotificationService.displayAlert(
-          remoteMessage.notification?.title || 'Vehicle Alert',
-          remoteMessage.notification?.body || 'You have a new alert'
-        );
-      });
-
-      // Handle background messages
-      messaging().setBackgroundMessageHandler(async remoteMessage => {
-        await NotificationService.displayAlert(
-          remoteMessage.notification?.title || 'Vehicle Alert',
-          remoteMessage.notification?.body || 'You have a new alert'
-        );
-      });
-
-      // Handle notification press
-      messaging().onNotificationOpenedApp(() => {
-        router.push('/alerts');
-      });
-
-      messaging().getInitialNotification().then(remoteMessage => {
-        if (remoteMessage) {
-          router.push('/alerts');
+        const initialized = await NotificationService.initialize();
+        if (!initialized) {
+            console.error('Failed to initialize notifications');
+            return;
         }
-      });
-    } catch (error) {
-      console.error('Error setting up notifications:', error);
-    }
-  }
 
+        // Get FCM token from NotificationService
+        this.token = await NotificationService.getToken();
+        if (!this.token) {
+            throw new Error('FCM token not available');
+        }
+        console.log('FCM Token:', this.token);
+
+        // Setup notification listeners through NotificationService
+        NotificationService.setupNotificationListeners();
+
+    } catch (error) {
+        console.error('Error setting up notifications:', error);
+        // Retry setup after delay
+        setTimeout(() => this.setupNotifications(), 5000);
+    }
+}
   private startHeartbeat() {
     this.stopHeartbeat();
     this.heartbeat = setInterval(() => {
@@ -84,6 +62,18 @@ Alert.alert('FCM Token', this.token);
   }
 
   public async connect() {
+
+ if (this.isConnected()) {
+        console.log('WebSocket is already connected');
+        return;
+    }
+    if (this.isConnecting) {
+        console.log('WebSocket connection is in progress');
+        return;
+    }
+
+
+
     if (this.ws || this.isConnecting) return;
     
     await this.setupNotifications();
@@ -92,22 +82,26 @@ Alert.alert('FCM Token', this.token);
     try {
       this.ws = new WebSocket('ws://192.168.10.26:3003');
       
-      this.ws.onopen = () => {
-        console.log('WebSocket connected');
-        this.reconnectAttempts = 0;
-        this.isConnecting = false;
-        this.startHeartbeat();
-        
-        // Send FCM token to server
-        if (this.token) {
-          this.send({
-            type: 'token',
-            token: this.token
-          });
-        } else {
-          console.error('Failed to get FCM token');
-        }
-      };
+    this.ws.onopen = () => {
+    console.log('WebSocket connected');
+    this.reconnectAttempts = 0;
+    this.isConnecting = false;
+    this.startHeartbeat();
+    
+    // Enhanced token registration
+    if (this.token) {
+        this.send({
+            type: 'register',
+            token: this.token,
+            platform: 'web',
+            version: '1.0',
+            device_serial: '1234567890',
+        });
+    } else {
+        console.error('Failed to get FCM token');
+        this.setupNotifications();
+    }
+};
 
       this.ws.onmessage = (event) => {
         this.handleMessage(event);
@@ -243,23 +237,28 @@ Alert.alert('FCM Token', this.token);
     });
   }
 
-  private handleAlertUpdate(data: any) {
+ private handleAlertUpdate(data: any) {
     if (data.data && Array.isArray(data.data)) {
-      data.data.forEach((alert: any) => {
-        if (alert.device_serial) {
-          store.dispatch(authApi.util.invalidateTags([
-            { type: 'Alerts', id: alert.device_serial }
-          ]));
-          
-          // Show notification for new alerts
-          NotificationService.displayAlert(
-            'New Alert',
-            alert.alert || 'You have a new alert'
-          );
-        }
-      });
+        data.data.forEach((alert: any) => {
+            if (alert.device_serial) {
+                store.dispatch(authApi.util.invalidateTags([
+                    { type: 'Alerts', id: alert.device_serial }
+                ]));
+                
+                // Use NotificationService for alert display
+                NotificationService.displayAlert(
+                    alert.alert_type || 'Alert',
+                    alert.alert_message || alert.alert || 'You have a new alert',
+                    {
+                        device_serial: alert.device_serial,
+                        alert_type: alert.alert_type,
+                        timestamp: alert.timestamp
+                    }
+                );
+            }
+        });
     }
-  }
+}
 
   private handleTicketsUpdate(data: any[]) {
     // Handle tickets update if needed
@@ -285,11 +284,12 @@ Alert.alert('FCM Token', this.token);
 
   private handleReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      setTimeout(() => this.connect(), this.reconnectInterval);
+        this.reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        console.log(`Attempting to reconnect in ${delay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        setTimeout(() => this.connect(), delay);
     } else {
-      console.error('Max reconnection attempts reached');
+        console.error('Max reconnection attempts reached');
     }
   }
 
@@ -297,17 +297,25 @@ Alert.alert('FCM Token', this.token);
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  public send(data: any) {
+ public send(data: any) {
     if (!this.ws) {
-      console.error('WebSocket not initialized');
-      return;
+        console.error('WebSocket not initialized');
+        return false;
     }
     if (this.ws.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket is not open');
-      return;
+        console.error('WebSocket is not open');
+        // Attempt to reconnect
+        this.connect();
+        return false;
     }
-    this.ws.send(JSON.stringify(data));
-  }
+    try {
+        this.ws.send(JSON.stringify(data));
+        return true;
+    } catch (error) {
+        console.error('Error sending message:', error);
+        return false;
+    }
+}
 
   public disconnect() {
     this.stopHeartbeat();

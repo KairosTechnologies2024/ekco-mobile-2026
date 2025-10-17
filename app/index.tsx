@@ -1,16 +1,17 @@
 import { Redirect } from 'expo-router';
 import { useEffect } from 'react';
-import NotificationService from '../services/NotificationServices';
+import WebSocketService from '../services/WebSocketService';
 
-
-
-
-export default function index() {
-useEffect(() => {
-    NotificationService.initialize();
+export default function Index() {
+  useEffect(() => {
+ 
+    WebSocketService.getInstance().connect();
+    
+    return () => {
+      // Optional: disconnect on unmount
+     WebSocketService.getInstance().disconnect();
+    };
   }, []);
-
-
 
   return <Redirect href="/screens/auth/auth" />;
 }

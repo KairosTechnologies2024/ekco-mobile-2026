@@ -1,4 +1,4 @@
-package com.kts.ekcotrackingmobile2026
+package com.ekcoapptest2026.app
 
 import android.app.Application
 import android.content.res.Configuration

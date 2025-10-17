@@ -6,9 +6,10 @@ import React, { useEffect, useState } from "react";
 import { Alert, StyleSheet, TouchableOpacity } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
+import { Provider } from "react-redux";
 import Sidebar from "../components/Sidebar";
 import "../global.css";
-
+import { store } from "../store/store";
 export default function Layout() {
   const segments = useSegments();
   const router = useRouter();
